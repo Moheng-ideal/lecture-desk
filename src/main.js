@@ -208,10 +208,13 @@ async function openLibrary() {
   if (!$('library').open) $('library').showModal();
 }
 
-function openSettings() {
+function openSettings(section) {
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
   $('credential-fields').hidden = !state.config.canSupplyCredentials;
+  $('feishu-fields').hidden = !state.config.canSupplyCredentials;
+  $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
+  $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
   $('configuration-hint').textContent = state.config.canSupplyCredentials ?
     '凭据只在这次页面会话中使用。PDF 和批注保存在当前设备，提问时只发送问题和引用。' :
     '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
@@ -221,6 +224,10 @@ function openSettings() {
   $('feishu-secret').value = settings.feishu.secret || '';
   $('feishu-folder').value = settings.feishu.folder || '';
   $('finger-ink').checked = Boolean(reader.fingerInk);
+  if (section === 'feishu') {
+    $('feishu-settings').open = true;
+    $('feishu-guide').open = true;
+  }
   if (!$('settings').open) $('settings').showModal();
 }
 
@@ -398,7 +405,7 @@ async function exportFeishu() {
     }
     if (!state.config.feishu && !getConnections().feishu.appId) {
       $('records').close();
-      openSettings();
+      openSettings('feishu');
       feedback('请配置飞书应用和目标文件夹后再保存。');
       return;
     }

@@ -127,16 +127,26 @@
       <div class="dialog-body settings-fields">
         <p id="configuration-hint"></p>
         <label id="pass-label" hidden>局域网访问口令<input id="access-code" type="password" maxlength="180" autocomplete="off"></label>
-        <fieldset id="credential-fields">
-          <legend>本次会话凭据</legend>
-          <label>DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
-          <details>
-            <summary>飞书云文档</summary>
+        <label id="credential-fields">DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
+        <details id="feishu-settings" class="feishu-settings">
+          <summary>飞书云文档</summary>
+          <details id="feishu-guide" class="feishu-guide">
+            <summary>如何接入飞书</summary>
+            <ol>
+              <li>在开发者后台选择「创建企业自建应用」。<a href="https://open.feishu.cn/app" target="_blank" rel="noopener noreferrer">打开飞书开放平台</a></li>
+              <li>在应用的「权限管理」中开通「创建及编辑新版文档」（<code>docx:document</code>），在「添加应用能力」中启用机器人，再到「版本管理与发布」发布应用。</li>
+              <li>在飞书建一个内部群，把应用加为群机器人。在云空间找到问答录要存入的文件夹，将它分享给该群，权限设为「可管理」。<a href="https://www.feishu.cn/content/383321056779" target="_blank" rel="noopener noreferrer">查看飞书授权说明</a></li>
+              <li>从应用的「凭证与基础信息」复制 App ID 和 App Secret。打开目标文件夹，从浏览器地址栏复制带有 <code>/drive/folder/</code> 的完整链接。</li>
+            </ol>
+            <p id="feishu-browser-help">把三项填到下方，点「应用设置」，再到「问答录 → 保存到飞书」试存一条。</p>
+            <p id="feishu-local-help" hidden>局域网 HTTP 使用电脑端的 <code>.env</code>。依次填写 <code>FEISHU_APP_ID</code>、<code>FEISHU_APP_SECRET</code> 和 <code>FEISHU_FOLDER_URL</code>，重启服务，在平板输入访问口令后试存一条。</p>
+          </details>
+          <div id="feishu-fields" class="feishu-fields">
             <label>飞书 App ID<input id="feishu-id" maxlength="100" placeholder="cli_…"></label>
             <label>飞书 App Secret<input id="feishu-secret" type="password" maxlength="180" autocomplete="off"></label>
             <label>目标飞书文件夹链接<input id="feishu-folder" type="url" maxlength="400" placeholder="https://你的租户.feishu.cn/drive/folder/…"></label>
-          </details>
-        </fieldset>
+          </div>
+        </details>
         <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（关闭时，手指滚动，触控笔写字）</label>
       </div>
       <footer><button type="submit" class="accent">应用设置</button></footer>
