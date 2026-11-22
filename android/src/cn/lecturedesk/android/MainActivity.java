@@ -7,7 +7,9 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Base64;
+import android.view.MotionEvent;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -25,6 +27,8 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> picker;
     private volatile SaveJob saveJob;
     private volatile boolean destroyed;
+    private volatile float contactPressure = -1;
+    private volatile long contactTime;
     private WebView view;
     private DeskNetwork network;
     private DeskSpeech speech;
@@ -63,6 +67,18 @@ public final class MainActivity extends Activity {
         view.addJavascriptInterface(new DeskBridge(), "LectureDeskNative");
         setContentView(view);
         view.loadUrl(DeskAssets.ORIGIN + "/");
+    }
+
+    @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+            int index = event.getActionIndex();
+            int tool = event.getToolType(index);
+            contactPressure = tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER
+                ? Math.max(0, Math.min(1, event.getPressure(index))) : -1;
+            contactTime = SystemClock.uptimeMillis();
+        }
+        return super.dispatchTouchEvent(event);
     }
 
     void emit(String id, String kind, String value) {
@@ -133,6 +149,10 @@ public final class MainActivity extends Activity {
     }
 
     private final class DeskBridge {
+        @JavascriptInterface public float penAtContact() {
+            return SystemClock.uptimeMillis() - contactTime <= 240 ? contactPressure : -1;
+        }
+
         @JavascriptInterface public boolean startHttp(String id, String url, String body, String auth, String type) {
             return !destroyed && network.start(id, url, body, auth, type);
         }

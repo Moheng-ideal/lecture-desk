@@ -5,6 +5,24 @@ export function mixPoint(a, b, t) {
     pressure: pressure(a) + (pressure(b) - pressure(a)) * t };
 }
 
+// Round joins from real samples once so display, erasing and export use the same path.
+export function traceInk(points, previous, next, { width, height }, end = false) {
+  const distance = Math.hypot((previous.x - next.x) * width, (previous.y - next.y) * height);
+  if (!end && distance < .35) return previous;
+  const start = points.at(-1);
+  const target = end ? next : mixPoint(previous, next, .5);
+  const middle = mixPoint(start, target, .5);
+  const bend = Math.hypot((middle.x - previous.x) * width, (middle.y - previous.y) * height);
+  const steps = Math.min(8, Math.max(1, Math.ceil(Math.sqrt(bend))));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const point = mixPoint(mixPoint(start, previous, t), mixPoint(previous, target, t), t);
+    const last = points.at(-1);
+    if (point.x !== last.x || point.y !== last.y) points.push(point);
+  }
+  return next;
+}
+
 function diameter(stroke, point, width, zoom) {
   const p = pressure(point);
   const profile = stroke.brush ?? (stroke.tool === 'marker' ? 'marker' : 'legacy');

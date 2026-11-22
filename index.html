@@ -94,12 +94,13 @@
       </div>
 
       <div class="reader" id="reader" tabindex="0" aria-label="PDF 页面">
-        <div id="page-stack"></div>
+        <div id="page-stage"><div id="page-stack"></div></div>
         <template id="page-template">
           <section class="paper">
             <canvas class="pdf-canvas" aria-label="课本页面"></canvas>
             <div class="textLayer" aria-label="PDF 文字"></div>
             <canvas class="ink-canvas" aria-label="手写批注"></canvas>
+            <canvas class="ink-preview" width="0" height="0" aria-hidden="true"></canvas>
             <div class="selection-rect" hidden></div>
           </section>
         </template>
@@ -224,7 +225,7 @@
             <label>目标飞书文件夹链接<input id="feishu-folder" type="url" maxlength="400" placeholder="https://你的租户.feishu.cn/drive/folder/…"></label>
           </div>
         </details>
-        <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（关闭时，手指滚动，触控笔写字）</label>
+        <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（关闭时，手指滑动，触控笔书写。双指缩放）</label>
       </div>
       <footer><button type="submit" class="accent">应用设置</button></footer>
     </form>
