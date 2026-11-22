@@ -4,7 +4,7 @@
 
 ## 安装到自己的平板
 
-1. 在电脑安装 DevEco Studio，解压工程包并打开其中的 `harmony` 目录。工程包已经附带界面、样书和识字模型。若从 Git 获取源码，先在仓库根目录运行 `npm ci` 和 `npm run build:harmony`。[华为下载中心](https://developer.huawei.com/consumer/cn/download/)
+1. 在电脑安装 DevEco Studio，把工程包解压到不含中文的路径，例如 `D:\LectureDeskBuild`，然后打开其中的 `harmony` 目录。工程包已经附带界面、样书和识字模型。若从 Git 获取源码，先在仓库根目录运行 `npm ci` 和 `npm run build:harmony`。[华为下载中心](https://developer.huawei.com/consumer/cn/download/)
 2. 在平板开启开发者选项和 USB 调试，用数据线连接电脑。在平板上允许该电脑调试。[华为真机安装说明](https://developer.huawei.com/consumer/cn/doc/harmonyos-faqs/app-debugging-faq-0005/)
 3. 在 DevEco Studio 选择平板，进入 `File → Project Structure → Project → Signing Configs`。勾选 `Automatically generate signature` 和 `Support HarmonyOS`，按提示登录华为账号。点击运行，DevEco Studio 会构建、签名并安装 HAP。[华为调试签名说明](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V13/ide-signing-V13/)
 

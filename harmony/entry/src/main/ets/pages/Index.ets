@@ -13,7 +13,7 @@ struct Index {
   private native: DeskBridge = new DeskBridge(this.controller, () => this.getAbility());
 
   private getAbility(): common.UIAbilityContext {
-    return getContext(this) as common.UIAbilityContext;
+    return this.getUIContext().getHostContext() as common.UIAbilityContext;
   }
 
   private async pickPdf(result: FileSelectorResult): Promise<void> {

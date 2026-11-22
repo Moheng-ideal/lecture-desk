@@ -40,7 +40,7 @@ function respond(handler: webview.WebResourceHandler, url: string, status: numbe
 export function interceptDeskAssets(handler: webview.WebSchemeHandler, manager: resourceManager.ResourceManager): void {
   handler.onRequestStart((request: webview.WebSchemeHandlerRequest, output: webview.WebResourceHandler): boolean => {
     const url = request.getRequestUrl();
-    const method = request.getMethod();
+    const method = request.getRequestMethod();
     const path = url.startsWith(APP_ORIGIN + '/') ? resourcePath(url) : '';
     let bytes: Uint8Array | undefined;
     if (path && (method === 'GET' || method === 'HEAD')) {
