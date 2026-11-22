@@ -154,6 +154,11 @@ public final class MainActivity extends Activity {
     }
 
     private final class DeskBridge {
+        private final DeskCredentials credentials = new DeskCredentials(MainActivity.this);
+
+        @JavascriptInterface public String readDeepSeekKey() { return credentials.read(); }
+        @JavascriptInterface public boolean saveDeepSeekKey(String value) { return credentials.save(value); }
+
         @JavascriptInterface public float penAtContact() {
             return SystemClock.uptimeMillis() - contactTime <= 240 ? contactPressure : -1;
         }

@@ -2,7 +2,8 @@ import './styles.css';
 import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer } from './api.js';
-import { formatDate, sourceLabel } from './records.js';
+import { formatDate, groupRecords, sourceLabel } from './records.js';
+import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
 import { installDividers } from './layout.js';
 import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
@@ -14,11 +15,21 @@ const $ = (id) => document.getElementById(id);
 const sample = { id: 'sample', title: '函数与图像', sample: true };
 const state = { book: sample, records: [], references: [], exports: [], config: {}, failed: null };
 const drafts = new Map();
+const bookTitles = new Map([[sample.id, sample.title]]);
 let openBooks = [];
 const voice = installVoice();
 let reader;
 let toastTimeout;
 let changingBook;
+let exportBusy = false;
+let savedKey;
+let credentialError = '';
+const credentialsReady = loadDeepSeekKey().then((key) => {
+  savedKey = key;
+  saveConnections({ ...getConnections(), deepseek: key });
+}).catch((error) => {
+  credentialError = error.message;
+});
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -175,6 +186,7 @@ async function activateBook(book) {
   try {
     if (!await reader.open(book)) return false;
     state.book = book;
+    bookTitles.set(book.id, book.title);
     if (!openBooks.some(({ id }) => id === book.id)) openBooks.push(book);
     const draft = drafts.get(book.id);
     state.references = draft?.references || [];
@@ -294,7 +306,8 @@ async function openLibrary() {
   if (!$('library').open) $('library').showModal();
 }
 
-function openSettings(section) {
+async function openSettings(section) {
+  await credentialsReady;
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
   $('credential-fields').hidden = !state.config.canSupplyCredentials;
@@ -302,12 +315,13 @@ function openSettings(section) {
   $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
   $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
   $('configuration-hint').textContent = nativeApp ?
-    '凭据只在本次打开应用期间使用。课本和批注保存在平板，提问时只发送问题和引用。' :
+    'DeepSeek API Key 加密保存在本机，重启后自动读取。清空密钥并应用设置即可移除。飞书凭据在本次打开期间使用。' :
     state.config.canSupplyCredentials ?
-      '凭据只在这次页面会话中使用。课件和批注保存在当前设备，提问时只发送问题和引用。' :
+      'DeepSeek API Key 加密保存在当前浏览器。清空密钥并应用设置即可移除。飞书凭据和访问口令在本次会话期间使用。' :
       '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
   $('access-code').value = settings.access;
   $('deepseek-key').value = settings.deepseek;
+  status('credential-status', credentialError);
   $('feishu-id').value = settings.feishu.appId || '';
   $('feishu-secret').value = settings.feishu.secret || '';
   $('feishu-folder').value = settings.feishu.folder || '';
@@ -334,6 +348,7 @@ function precedingTurns(question, references) {
 }
 
 async function ask(question, references = state.references) {
+  await credentialsReady;
   if (state.stream || changingBook) return;
   question = question.trim() || (references.length ? '请讲解这段课本内容。' : '');
   if (!question) {
@@ -350,7 +365,8 @@ async function ask(question, references = state.references) {
     return;
   }
 
-  const record = { id: newId(), bookId: state.book.id, date: new Date().toISOString(), question, references: [...references] };
+  const record = { id: newId(), bookId: state.book.id, bookTitle: state.book.title,
+    date: new Date().toISOString(), question, references: [...references] };
   const controller = new AbortController();
   state.stream = controller;
   state.failed?.forEach((node) => node.remove());
@@ -418,6 +434,12 @@ function selectedRecords() {
   return state.records.filter((record) => ids.has(record.id));
 }
 
+function updateRecordSelection() {
+  const count = selectedRecords().length;
+  $('record-selection').textContent = `已选 ${count} 条`;
+  $('export-docx').disabled = $('export-feishu').disabled = exportBusy || count === 0;
+}
+
 function exportOptions() {
   const title = $('record-title').value.trim();
   const records = selectedRecords();
@@ -440,47 +462,81 @@ function showFeishu(url) {
 }
 
 function openRecords() {
-  $('record-title').value = state.book.sample ? '讲课问答录' : `${state.book.title.slice(0, 105)}问答录`;
-  $('record-list').replaceChildren(...state.records.map((record) => {
-    const row = element('li');
+  const groups = groupRecords([...state.records].reverse(), bookTitles);
+  const active = groups.find(({ id }) => id === state.book.id) || groups[0];
+  const titleFor = (group) => group?.id === sample.id || !group ? '讲课问答录' : `${group.title.slice(0, 105)}问答录`;
+  $('record-title').value = titleFor(active);
+  const selection = new Set((active?.records || []).map(({ id }) => id));
+  function recordRow(record) {
+    const row = element('li', null, 'record-entry');
     const label = element('label', null, 'checkbox');
     const check = document.createElement('input');
     check.type = 'checkbox';
     check.value = record.id;
-    check.checked = record.bookId === state.book.id;
-    label.append(check, element('strong', record.question));
-    const sources = record.references.map(({ book, page }) => `${book} 第 ${page} 页`).join('、');
-    row.append(label, element('small', [formatDate(record.date), sources].filter(Boolean).join(' · ')),
-      element('p', record.answer.length > 170 ? record.answer.slice(0, 170) + '…' : record.answer));
+    check.checked = selection.has(record.id);
+    label.append(check, element('span', `选中问答 ${record.question}`, 'sr-only'));
+    const detail = element('details');
+    const summary = element('summary', record.question);
+    summary.append(element('small', formatDate(record.date)));
+    const body = element('div', null, 'record-answer');
+    detail.append(summary, body);
+    detail.addEventListener('toggle', () => {
+      if (!detail.open || body.childNodes.length) return;
+      const answer = element('div');
+      body.append(...record.references.map(referenceDetails), answer);
+      renderAnswer(answer, record.answer);
+    });
+    row.append(label, detail);
+    return row;
+  }
+  $('record-list').replaceChildren(...groups.map((group) => {
+    const row = element('li');
+    const detail = element('details', null, 'record-book');
+    detail.open = group === active;
+    const summary = element('summary', group.title);
+    summary.append(element('small', `${group.records.length} 条`));
+    const select = button('仅选本书', () => {
+      const ids = new Set(group.records.map(({ id }) => id));
+      for (const checkbox of $('record-list').querySelectorAll('input')) checkbox.checked = ids.has(checkbox.value);
+      $('record-title').value = titleFor(group);
+      resetExportDisplay();
+    }, 'outline');
+    const entries = element('ol', null, 'record-entries');
+    entries.append(...group.records.map(recordRow));
+    detail.append(summary, select, entries);
+    row.append(detail);
     return row;
   }));
   if (!state.records.length) $('record-list').append(element('li', '完成一次提问后，问题、引用和讲解会自动收入这里。'));
-  $('export-docx').disabled = $('export-feishu').disabled = !state.records.length;
   resetExportDisplay();
   $('records').showModal();
 }
 
 function resetExportDisplay() {
+  updateRecordSelection();
   showFeishu('');
   status('export-status');
   $('export-feishu').textContent = '保存到飞书';
 }
 
 async function exportWord() {
-  const action = $('export-docx');
-  action.disabled = true;
+  if (exportBusy) return;
+  exportBusy = true;
+  updateRecordSelection();
   try {
     const { title, records } = exportOptions();
     const { downloadWord } = await import('./word.js');
     const saved = await downloadWord(title, records);
     status('export-status', saved ? (nativeApp ? 'Word 已保存。' : 'Word 下载已发起。') : '');
   } catch (error) { status('export-status', error.message); }
-  finally { action.disabled = !state.records.length; }
+  finally { exportBusy = false; updateRecordSelection(); }
 }
 
 async function exportFeishu() {
   const action = $('export-feishu');
-  action.disabled = true;
+  if (exportBusy) return;
+  exportBusy = true;
+  updateRecordSelection();
   try {
     const { title, records } = exportOptions();
     const destination = getConnections().feishu.folder || 'server';
@@ -513,7 +569,7 @@ async function exportFeishu() {
       throw error;
     }
   } catch (error) { status('export-status', error.message); }
-  finally { action.disabled = !state.records.length; }
+  finally { exportBusy = false; updateRecordSelection(); }
 }
 
 function rememberExport(item) {
@@ -589,12 +645,24 @@ $('settings-form').onsubmit = async (event) => {
     feedback('飞书 App ID、App Secret 和文件夹链接都需要填写。');
     return;
   }
-  saveConnections({ access: trim('access-code'), deepseek: trim('deepseek-key'), feishu });
+  const deepseek = trim('deepseek-key');
+  if (deepseek !== savedKey) {
+    const submit = event.submitter;
+    if (submit) submit.disabled = true;
+    try {
+      await rememberDeepSeekKey(deepseek);
+      savedKey = deepseek;
+      credentialError = '';
+    } catch {
+      credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。';
+    } finally { if (submit) submit.disabled = false; }
+  }
+  saveConnections({ access: trim('access-code'), deepseek, feishu });
   reader.fingerInk = $('finger-ink').checked;
   saveState('fingerInk', reader.fingerInk).catch(() => {});
   $('settings').close();
   await refreshConfiguration();
-  feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' : '设置已应用。');
+  feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' : credentialError || '设置已应用。');
 };
 $('records-open').onclick = openRecords;
 $('record-list').onchange = resetExportDisplay;
@@ -620,6 +688,7 @@ installTheme();
 installWhiteboard({ notify: feedback });
 if (nativeApp) $('export-docx').textContent = '保存 Word';
 async function initialize() {
+  await credentialsReady;
   refreshConfiguration();
   const [bookId, records, fingerInk, exports, tabIds, books] = await Promise.all([
     readState('activeBook').catch(() => null),
@@ -634,6 +703,7 @@ async function initialize() {
   state.records = records.sort((a, b) => a.date.localeCompare(b.date));
   $('record-count').textContent = state.records.length;
   const available = new Map([sample, ...books].map((item) => [item.id, item]));
+  for (const { id, title } of available.values()) bookTitles.set(id, title);
   openBooks = Array.isArray(tabIds) ? [...new Set(tabIds)].map((id) => available.get(id)).filter(Boolean) : [];
   const book = available.get(bookId) || openBooks[0] || sample;
   try { await activateBook(book || sample); }

@@ -1,5 +1,6 @@
-import { AlignmentType, Document, HeadingLevel, Packer, PageNumber, Paragraph, TextRun, Footer } from 'docx';
+import { AlignmentType, Document, HeadingLevel, ImageRun, Packer, PageNumber, Paragraph, TextRun, Footer } from 'docx';
 import { recordSections } from './records.js';
+import { drawDiagram } from './diagrams.js';
 import { nativeApp } from './platform.js';
 
 const font = { ascii: 'Calibri', hAnsi: 'Calibri', eastAsia: '等线', cs: 'Calibri' };
@@ -11,12 +12,12 @@ const excerpt = (text) => new Paragraph({
   children: text.split(/\r?\n/).map((line, index) => new TextRun({ text: line, break: index ? 1 : 0 })),
 });
 
-export function createWord(title, records) {
+export function createWord(title, records, figures = []) {
   const children = [
     heading(title, HeadingLevel.TITLE),
     paragraph(`共 ${records.length} 条问答，包含问题、课本摘录及讲解。`),
   ];
-  for (const section of recordSections(records)) {
+  for (const [index, section] of recordSections(records).entries()) {
     children.push(
       heading(section.heading, HeadingLevel.HEADING_1),
       paragraph(section.date, { style: 'Meta' }),
@@ -27,7 +28,12 @@ export function createWord(title, records) {
       children.push(heading(quote.label, HeadingLevel.HEADING_2), excerpt(quote.text));
     }
     children.push(heading('讲解', HeadingLevel.HEADING_2));
-    for (const block of section.answer) children.push(...lines(block));
+    for (const [blockIndex, block] of section.answer.entries()) {
+      children.push(...lines(block));
+      const image = figures[index]?.get(blockIndex);
+      if (image) children.push(new Paragraph({ alignment: AlignmentType.CENTER,
+        children: [new ImageRun({ type: 'png', data: image, transformation: { width: 518, height: 283 } })] }));
+    }
   }
   const document = new Document({
     title, creator: '讲课台',
@@ -54,8 +60,36 @@ export function createWord(title, records) {
   return document;
 }
 
+async function diagramPng(diagram) {
+  const svg = drawDiagram(diagram);
+  const source = new XMLSerializer().serializeToString(svg);
+  const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 700;
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function downloadWord(title, records) {
-  const blob = await Packer.toBlob(createWord(title, records));
+  const figures = [];
+  for (const section of recordSections(records)) {
+    const images = new Map();
+    for (const { index, diagram } of section.figures) {
+      const image = await diagramPng(diagram).catch(() => null);
+      if (image) images.set(index, image);
+    }
+    figures.push(images);
+  }
+  const blob = await Packer.toBlob(createWord(title, records, figures));
   const filename = `${title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')}.docx`;
   if (nativeApp) {
     const { saveHarmonyDocument } = await import('./harmony.js');

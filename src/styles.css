@@ -207,6 +207,8 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .formatted :is(pre, .katex-display) { overflow-x: auto; padding: 7px; }
 .formatted pre { background: var(--cream); border-radius: 8px; }
 .formatted img { max-width: 100%; }
+.teaching-diagram { margin: 1rem auto; max-width: 640px; }
+.teaching-diagram svg { display: block; width: 100%; height: auto; }
 .formatted table { display: block; overflow-x: auto; border-collapse: collapse; }
 .formatted td, .formatted th { padding: 4px 8px; border: 1px solid var(--line); }
 .formatted h1, .formatted h2 { font-size: 1.28rem; }
@@ -283,8 +285,18 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .feishu-guide code { overflow-wrap: anywhere; }
 .book-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); }
 .book-row button:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
-#record-list li { padding: 13px 0; border-bottom: 1px solid var(--line); }
-#record-list p { margin: 5px 0; color: var(--muted); white-space: pre-wrap; line-height: 1.5; }
+#record-list { margin-top: 12px; }
+#record-list > li { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.record-book summary { padding: 8px 0; font-weight: 650; cursor: pointer; overflow-wrap: anywhere; }
+.record-book > summary small { margin-inline-start: 8px; color: var(--muted); font-weight: 400; }
+.record-entries { margin: 3px 0 0; padding: 0; list-style: none; }
+.record-entry { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px; align-items: start; border-top: 1px solid var(--line); }
+.record-entry > label { min-height: 36px; }
+.record-entry summary small { display: block; margin: 3px 0 0 15px; color: var(--muted); font-weight: 400; }
+.record-answer { padding: 0 8px 10px 0; }
+#record-selection { margin-right: auto; }
+#records footer { flex-wrap: wrap; }
+#credential-status { color: var(--brick); }
 .toast { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 9px 14px; color: white; background: #344033; border-radius: 10px; box-shadow: 0 2px 8px #0003; z-index: 4; }
 @media (max-width: 1050px) {
   .tools { gap: 5px; padding-inline: 8px; }

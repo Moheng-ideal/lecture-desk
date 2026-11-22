@@ -23,6 +23,17 @@ function bridge() {
   });
 }
 
+export async function nativeDeepSeekKey(value) {
+  const native = await bridge();
+  if (typeof native.readDeepSeekKey !== 'function' || typeof native.saveDeepSeekKey !== 'function') return undefined;
+  if (value === undefined) {
+    const stored = native.readDeepSeekKey();
+    if (typeof stored === 'string') return stored;
+    throw new Error('本机已保存的 DeepSeek API Key 无法读取，请重新填写。');
+  }
+  return Boolean(native.saveDeepSeekKey(value));
+}
+
 document.addEventListener('click', (event) => {
   const link = event.target.closest?.('a[href]');
   if (!link || !event.isTrusted || link.protocol !== 'https:' || link.origin === location.origin) return;

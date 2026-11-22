@@ -218,6 +218,7 @@
         <p id="configuration-hint"></p>
         <label id="pass-label" hidden>局域网访问口令<input id="access-code" type="password" maxlength="180" autocomplete="off"></label>
         <label id="credential-fields">DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
+        <p id="credential-status" role="status" hidden></p>
         <details id="feishu-settings" class="feishu-settings">
           <summary>飞书云文档</summary>
           <details id="feishu-guide" class="feishu-guide">
@@ -252,6 +253,7 @@
       <a id="feishu-link" target="_blank" rel="noopener noreferrer" hidden>打开飞书云文档</a>
     </div>
     <footer>
+      <small id="record-selection" aria-live="polite">已选 0 条</small>
       <button type="button" id="export-docx" class="outline">下载 Word</button>
       <button type="button" id="export-feishu" class="accent">保存到飞书</button>
     </footer>

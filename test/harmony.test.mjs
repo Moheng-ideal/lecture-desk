@@ -4,7 +4,7 @@ import { test } from 'node:test';
 globalThis.window = new EventTarget();
 globalThis.document = new EventTarget();
 globalThis.location = new URL('https://lecture-desk.invalid');
-const { requestFromHarmony, harmonyVoice } = await import('../src/harmony.js');
+const { requestFromHarmony, harmonyVoice, nativeDeepSeekKey } = await import('../src/harmony.js');
 
 const sendEvent = (id, kind, value) => window.dispatchEvent(
   new CustomEvent('lecture-desk-native', { detail: { id, kind, value } }),
@@ -12,6 +12,25 @@ const sendEvent = (id, kind, value) => window.dispatchEvent(
 const ask = (signal) => requestFromHarmony('/api/chat', {
   method: 'POST', signal, headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ question: '怎么理解？', references: [], history: [], credentials: { deepseek: 'fixture' } }),
+});
+
+test('credential bridge distinguishes a missing store, a failed write and a cleared key', async () => {
+  window.LectureDeskNative = {};
+  assert.equal(await nativeDeepSeekKey(), undefined);
+  let value = '';
+  window.LectureDeskNative = {
+    readDeepSeekKey: () => value,
+    saveDeepSeekKey(key) {
+      if (key === 'rejected') return false;
+      value = key;
+      return true;
+    },
+  };
+  assert.equal(await nativeDeepSeekKey('fixture'), true);
+  assert.equal(await nativeDeepSeekKey(), 'fixture');
+  assert.equal(await nativeDeepSeekKey('rejected'), false);
+  assert.equal(await nativeDeepSeekKey(''), true);
+  assert.equal(await nativeDeepSeekKey(), '');
 });
 
 test('the Harmony app can read configuration and receive DeepSeek chunks without a web server', async () => {
