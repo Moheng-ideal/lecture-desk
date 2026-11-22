@@ -3,7 +3,7 @@ import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer } from './api.js';
 import { formatDate, sourceLabel } from './records.js';
-import { installDivider } from './layout.js';
+import { installDividers } from './layout.js';
 import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
@@ -100,7 +100,7 @@ function userCard({ question, references }) {
 function assistantCard() {
   const item = element('li', null, 'message assistant');
   const content = element('div', '正在准备讲解…', 'pending');
-  item.append(element('span', '讲解助手', 'message-label'), content);
+  item.append(element('span', '讲解师', 'message-label'), content);
   return { item, content };
 }
 
@@ -588,9 +588,9 @@ $('teach-next').onclick = () => teach('请接着上一页，讲解当前页的�
 for (const target of document.querySelectorAll('[data-suggest]')) target.onclick = () => teach(target.dataset.suggest);
 
 reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
-installDivider();
+installDividers();
 installTheme();
-installWhiteboard({ notify: feedback, onOpen: voice.cancel });
+installWhiteboard({ notify: feedback });
 if (import.meta.env.MODE === 'harmony') $('export-docx').textContent = '保存 Word';
 async function initialize() {
   refreshConfiguration();

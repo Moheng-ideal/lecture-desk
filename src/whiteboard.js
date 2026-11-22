@@ -1,9 +1,10 @@
 import { eraseAt, mixPoint, paintStrokes } from './ink.js';
 import { readState, saveState } from './storage.js';
 
-export function installWhiteboard({ notify, onOpen }) {
+export function installWhiteboard({ notify }) {
   const board = document.getElementById('class-board');
   const workspace = document.getElementById('workspace');
+  const divider = document.getElementById('board-divider');
   const open = document.getElementById('board-open');
   const surface = document.getElementById('board-surface');
   const canvas = document.getElementById('board-ink');
@@ -56,11 +57,10 @@ export function installWhiteboard({ notify, onOpen }) {
   new ResizeObserver(resize).observe(surface);
 
   function toggle(visible) {
-    if (visible) onOpen?.();
-    else end(false);
+    if (!visible) end(false);
     board.hidden = !visible;
+    divider.hidden = !visible;
     workspace.toggleAttribute('data-board-open', visible);
-    document.querySelector('.chat-pane').inert = visible;
     open.setAttribute('aria-expanded', String(visible));
     if (visible) resize();
   }
