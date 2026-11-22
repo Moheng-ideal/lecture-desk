@@ -43,12 +43,24 @@ export class DeskBridge {
   private requests: Map<string, RequestState> = new Map();
   private base64: util.Base64Helper = new util.Base64Helper();
   private saving: boolean = false;
+  private penDownAt: number = 0;
+  private penForce: number = 0;
   private speech: DeskSpeech;
 
   constructor(controller: webview.WebviewController, getAbility: () => common.UIAbilityContext) {
     this.controller = controller;
     this.getAbility = getAbility;
     this.speech = new DeskSpeech(getAbility, (id: string, kind: string, value: string) => this.send(id, kind, value));
+  }
+
+  observeTouch(event: TouchEvent): void {
+    if (event.type !== TouchType.Down) return;
+    this.penDownAt = event.sourceTool === SourceTool.Pen ? Date.now() : 0;
+    this.penForce = Math.min(1, Math.max(0, event.pressure ?? 0));
+  }
+
+  penAtContact(): number {
+    return Date.now() - this.penDownAt <= 180 ? this.penForce : -1;
   }
 
   private send(id: string, kind: string, value: string = ''): void {

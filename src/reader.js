@@ -51,6 +51,7 @@ export class Reader {
     this.onChange = change;
     this.onError = error;
     this.reader = byId('reader');
+    this.workspace = byId('workspace');
     this.stack = byId('page-stack');
     this.surfaces = [];
     this.nearby = new Set();
@@ -144,6 +145,8 @@ export class Reader {
   set fingerInk(value) { this.reader.dataset.fingerInk = String(Boolean(value)); }
 
   async open(book) {
+    this.stopGlide();
+    if (this.pan) this.endPan();
     if (this.book) {
       clearTimeout(this.scrollSave);
       this.persist();
@@ -230,7 +233,8 @@ export class Reader {
 
   sizeSurface(surface) {
     const { width, height } = surface.viewport;
-    const scale = Math.min(1.55, this.lastWidth / width) * this.zoom;
+    const fit = this.lastWidth / width;
+    const scale = (this.workspace.hasAttribute('data-book-fullscreen') ? fit : Math.min(1.55, fit)) * this.zoom;
     surface.paper.style.width = `${width * scale}px`;
     surface.paper.style.height = `${height * scale}px`;
     return scale;
@@ -419,6 +423,8 @@ export class Reader {
   }
 
   setTool(tool) {
+    this.stopGlide();
+    if (this.pan) this.endPan();
     this.finishPointer(true);
     this.tool = tool;
     if (this.tool === 'pen' || this.tool === 'marker') this.lastPen = this.tool;
@@ -442,24 +448,42 @@ export class Reader {
     if (this.tool === 'select') byId('selection-note').textContent = scanMessage;
   }
 
-  point(event) {
+  point(event, stylus = this.pointer?.stylus, fallback = this.pointer?.last?.pressure || .5) {
     const box = this.ink.getBoundingClientRect();
     return {
       x: clamp((event.clientX - box.left) / box.width, 0, 1),
       y: clamp((event.clientY - box.top) / box.height, 0, 1),
-      pressure: event.pointerType === 'pen' && event.pressure > 0 ? event.pressure : .5,
+      pressure: stylus && event.pressure > 0 ? clamp(event.pressure, 0, 1) : fallback,
     };
   }
 
   pointerDown(event) {
-    if (this.pointer || event.button !== 0 || (event.pointerType === 'touch' && !this.fingerInk)) return;
-    if (!event.target.classList.contains('ink-canvas')) return;
-    const surface = this.surfacesByElement.get(event.target.closest('.page-slot'));
+    this.stopGlide();
+    if (this.pointer || event.button !== 0) return;
+    const canvas = event.target.closest('.ink-canvas');
+    if (!canvas) return;
+    const touch = event.pointerType === 'touch' || !event.pointerType;
+    let nativePressure = -1;
+    if (touch) {
+      try { nativePressure = window.LectureDeskNative?.penAtContact?.() ?? -1; } catch { /* Browser fallback. */ }
+    }
+    const stylus = event.pointerType === 'pen' || nativePressure >= 0;
+    if (touch && !stylus && !this.fingerInk) {
+      if (!this.pan) {
+        this.pan = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp, vx: 0, vy: 0 };
+        this.stack.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      }
+      return;
+    }
+    if (this.pan) this.endPan();
+    const surface = this.surfacesByElement.get(canvas.closest('.page-slot'));
     if (!surface?.rendered) return;
     this.selectPage(surface);
-    const p = this.point(event);
+    const p = this.point(event, stylus);
+    if (nativePressure > 0) p.pressure = nativePressure;
     this.pointer = {
-      id: event.pointerId, tool: this.tool, stylus: event.pointerType === 'pen',
+      id: event.pointerId, tool: this.tool, stylus,
       initial: p, last: p, before: this.currentStrokes, path: [p],
     };
     this.ink.setPointerCapture(event.pointerId);
@@ -473,6 +497,18 @@ export class Reader {
   }
 
   pointerMove(event) {
+    const pan = this.pan;
+    if (pan?.id === event.pointerId) {
+      const dx = pan.x - event.clientX;
+      const dy = pan.y - event.clientY;
+      const interval = Math.max(10, event.timeStamp - pan.time);
+      this.reader.scrollBy(dx, dy);
+      Object.assign(pan, {
+        x: event.clientX, y: event.clientY, time: event.timeStamp,
+        vx: clamp(dx / interval, -3, 3), vy: clamp(dy / interval, -3, 3),
+      });
+      return;
+    }
     const active = this.pointer;
     if (active?.id !== event.pointerId) return;
     if (active.tool === 'select') this.setBounds(active.initial, this.point(event));
@@ -484,12 +520,22 @@ export class Reader {
     }
     if (this.draft) {
       this.draft.points.push(...points);
+      active.last = points.at(-1);
       this.paint();
     }
   }
 
   pointerEnd(event, cancelled = false) {
+    if (this.pan?.id === event.pointerId) {
+      this.endPan(!cancelled && event.timeStamp - this.pan.time < 85);
+      return;
+    }
     if (this.pointer?.id !== event.pointerId) return;
+    if (!cancelled && this.draft) {
+      const point = this.point(event);
+      const last = this.draft.points.at(-1);
+      if (point.x !== last.x || point.y !== last.y) this.draft.points.push(point);
+    }
     if (!cancelled && this.pointer.tool === 'select') this.setBounds(this.pointer.initial, this.point(event));
     if (!cancelled && this.pointer.tool === 'eraser') {
       this.erase(this.point(event), false);
@@ -499,6 +545,31 @@ export class Reader {
       }
     }
     this.finishPointer(cancelled);
+  }
+
+  endPan(coast = false) {
+    const pan = this.pan;
+    this.pan = null;
+    if (this.stack.hasPointerCapture(pan.id)) this.stack.releasePointerCapture(pan.id);
+    if (!coast || Math.hypot(pan.vx, pan.vy) < .16) return;
+    let last = performance.now();
+    const frame = (time) => {
+      const interval = clamp(time - last, 0, 32);
+      last = time;
+      const friction = Math.exp(-interval / 135);
+      pan.vx *= friction;
+      pan.vy *= friction;
+      const { scrollTop, scrollLeft } = this.reader;
+      this.reader.scrollBy(pan.vx * interval, pan.vy * interval);
+      this.glide = (this.reader.scrollTop !== scrollTop || this.reader.scrollLeft !== scrollLeft) &&
+        Math.hypot(pan.vx, pan.vy) > .05 ? requestAnimationFrame(frame) : null;
+    };
+    this.glide = requestAnimationFrame(frame);
+  }
+
+  stopGlide() {
+    if (this.glide) cancelAnimationFrame(this.glide);
+    this.glide = null;
   }
 
   finishPointer(cancelled) {

@@ -40,10 +40,15 @@ struct Index {
         .javaScriptAccess(true)
         .domStorageAccess(true)
         .zoomAccess(false)
+        .onTouchIntercept((event) => {
+          this.native.observeTouch(event);
+          return HitTestMode.Default;
+        })
         .javaScriptProxy({
           object: this.native,
           name: 'LectureDeskNative',
-          methodList: ['startHttp', 'cancelHttp', 'saveDocument', 'openLink', 'startVoice', 'finishVoice', 'cancelVoice'],
+          methodList: ['startHttp', 'cancelHttp', 'saveDocument', 'openLink',
+            'startVoice', 'finishVoice', 'cancelVoice', 'penAtContact'],
           controller: this.controller,
         })
         // ArkWeb accepts null to pass through requests outside the bundled origin.
