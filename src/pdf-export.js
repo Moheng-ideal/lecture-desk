@@ -7,10 +7,14 @@ export function annotatedFilename(title) {
   return `${Array.from(safe || '课本').slice(0, 115).join('')}（批注）.pdf`;
 }
 
-export async function buildAnnotatedPdf(reader) {
+export async function buildAnnotatedPdf(reader, progress) {
   reader.finishPointer(true);
-  const { pdf, lastWidth } = reader;
+  const { documentSource: pdf, lastWidth } = reader;
   if (!pdf) throw new Error('请先打开课本。');
+  if (pdf.office) {
+    const { exportOfficePdf } = await import('./office-export.js');
+    return exportOfficePdf(pdf, reader.pages, lastWidth, progress);
+  }
   const pages = Object.entries(reader.pages).filter(([, strokes]) => strokes.length);
   if (!pages.length) return new Blob([await pdf.getData()], { type: 'application/pdf' });
   const permissions = await pdf.getPermissions();

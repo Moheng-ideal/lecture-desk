@@ -8,6 +8,7 @@ import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
 import { nativeApp } from './platform.js';
+import { bookFormat, formats } from './book-format.js';
 
 const $ = (id) => document.getElementById(id);
 const sample = { id: 'sample', title: '函数与图像', sample: true };
@@ -148,7 +149,7 @@ function syncChat() {
   $('send').disabled = busy || Boolean(changingBook);
   $('stop').hidden = !busy;
   $('teach-page').disabled = busy || !reader?.rendered || Boolean(changingBook);
-  $('teach-next').disabled = $('teach-page').disabled || reader.page >= reader.pdf.numPages;
+  $('teach-next').disabled = $('teach-page').disabled || reader.page >= reader.documentSource.numPages;
   $('connection-state').textContent = state.config.unavailable ? 'DeepSeek · 服务不可用' :
     state.config.requiresCode && !state.config.authorized ? 'DeepSeek · 请输入访问口令' :
       state.config.deepseek || getConnections().deepseek ? 'DeepSeek Flash · 已配置' : 'DeepSeek · 待配置';
@@ -244,7 +245,13 @@ async function importBook(file) {
     feedback('请先结束当前讲解，再导入课本。');
     return;
   }
-  const book = { id: newId(), title: file.name.replace(/\.pdf$/i, '').slice(0, 290) || '未命名课本', file, imported: Date.now() };
+  const extension = bookFormat(file);
+  if (!extension) {
+    feedback('请选择 PDF、Word（.docx、.doc）或 PPT（.pptx、.ppt）文件。');
+    return;
+  }
+  const title = file.name.replace(new RegExp(`\\.${extension}$`, 'i'), '').slice(0, 290) || '未命名课件';
+  const book = { id: newId(), title, file, extension, imported: Date.now() };
   showPanel('book');
   if (!await activateBook(book)) return;
   try {
@@ -267,6 +274,7 @@ async function openLibrary() {
     });
     pick.title = book.title;
     row.append(pick);
+    if (!book.sample) row.append(element('small', formats[book.extension] || 'PDF'));
     if (!book.sample && book.id !== state.book.id) {
       row.append(button('移除', async () => {
         if (!confirm(`从本机书架移除《${book.title}》？`)) return;
@@ -296,7 +304,7 @@ function openSettings(section) {
   $('configuration-hint').textContent = nativeApp ?
     '凭据只在本次打开应用期间使用。课本和批注保存在平板，提问时只发送问题和引用。' :
     state.config.canSupplyCredentials ?
-      '凭据只在这次页面会话中使用。PDF 和批注保存在当前设备，提问时只发送问题和引用。' :
+      '凭据只在这次页面会话中使用。课件和批注保存在当前设备，提问时只发送问题和引用。' :
       '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
   $('access-code').value = settings.access;
   $('deepseek-key').value = settings.deepseek;
@@ -524,7 +532,9 @@ async function exportPdf(cloud) {
   try {
     const { annotatedFilename, buildAnnotatedPdf, savePdfOnDevice } = await import('./pdf-export.js');
     const filename = annotatedFilename(reader.book.title);
-    const blob = await buildAnnotatedPdf(reader);
+    const blob = await buildAnnotatedPdf(reader, (page, total) => {
+      output.textContent = `正在合成带批注的 PDF · ${page} / ${total} 页`;
+    });
     if (cloud) {
       output.textContent = '正在上传 PDF 到飞书…';
       const result = await sendPdfToFeishu(filename, blob);

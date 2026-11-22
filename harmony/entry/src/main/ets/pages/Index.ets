@@ -16,11 +16,11 @@ struct Index {
     return this.getUIContext().getHostContext() as common.UIAbilityContext;
   }
 
-  private async pickPdf(result: FileSelectorResult): Promise<void> {
+  private async pickBook(result: FileSelectorResult): Promise<void> {
     try {
       const options = new picker.DocumentSelectOptions();
       options.maxSelectNumber = 1;
-      options.fileSuffixFilters = ['PDF (*.pdf)|.pdf'];
+      options.fileSuffixFilters = ['课件 (*.pdf;*.docx;*.doc;*.pptx;*.ppt)|.pdf,.docx,.doc,.pptx,.ppt'];
       const files = await new picker.DocumentViewPicker(this.getAbility()).select(options);
       result.handleFileList(files);
     } catch {
@@ -70,7 +70,7 @@ struct Index {
         })
         .onShowFileSelector((event) => {
           if (!event) return false;
-          this.pickPdf(event.result);
+          this.pickBook(event.result);
           return true;
         })
       if (this.startupFailed) {

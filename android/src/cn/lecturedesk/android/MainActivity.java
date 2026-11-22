@@ -21,7 +21,12 @@ import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
-    private static final int PICK_PDF = 487;
+    private static final int PICK_BOOK = 487;
+    private static final String[] BOOK_MIME_TYPES = {
+        "application/pdf", "application/msword", "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    };
     private static final int SAVE_FILE = 488;
     private final ExecutorService disk = Executors.newSingleThreadExecutor();
     private ValueCallback<Uri[]> picker;
@@ -58,9 +63,9 @@ public final class MainActivity extends Activity {
                 if (picker != null) picker.onReceiveValue(null);
                 picker = callback;
                 Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType("application/pdf");
-                try { startActivityForResult(pick, PICK_PDF); }
-                catch (ActivityNotFoundException error) { selectedPdf(null); }
+                    .setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, BOOK_MIME_TYPES);
+                try { startActivityForResult(pick, PICK_BOOK); }
+                catch (ActivityNotFoundException error) { selectedBook(null); }
                 return true;
             }
         });
@@ -91,7 +96,7 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void selectedPdf(Uri uri) {
+    private void selectedBook(Uri uri) {
         ValueCallback<Uri[]> callback = picker;
         picker = null;
         if (callback != null) callback.onReceiveValue(uri == null ? null : new Uri[] { uri });
@@ -100,7 +105,7 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         Uri file = result == RESULT_OK && data != null ? data.getData() : null;
-        if (request == PICK_PDF) selectedPdf(file);
+        if (request == PICK_BOOK) selectedBook(file);
         if (request != SAVE_FILE || saveJob == null) return;
         SaveJob job = saveJob;
         if (file == null) {
@@ -139,7 +144,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
-        selectedPdf(null);
+        selectedBook(null);
         network.close();
         speech.close();
         disk.shutdown();

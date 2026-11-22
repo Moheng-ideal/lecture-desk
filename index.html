@@ -26,12 +26,12 @@
   <main id="workspace" data-panel="book">
     <section class="book-pane" aria-label="课本区">
       <div class="book-bar">
-        <div class="file-info"><span class="file-mark" aria-hidden="true">PDF</span><div><strong id="book-title">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
+        <div class="file-info"><span class="file-mark" id="book-format" aria-hidden="true">PDF</span><div><strong id="book-title">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
         <div id="book-actions" class="book-actions">
           <button type="button" id="pdf-export" class="quiet" disabled>保存 PDF</button>
           <button type="button" id="library-open" class="quiet">书架</button>
-          <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入 PDF</button>
-          <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
+          <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入课件</button>
+          <input id="pdf-file" type="file" accept=".pdf,.docx,.doc,.pptx,.ppt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" hidden>
         </div>
       </div>
       <div class="book-tabs-bar">
@@ -93,12 +93,12 @@
         <button type="button" id="use-selection" class="accent">引用选文</button>
       </div>
 
-      <div class="reader" id="reader" tabindex="0" aria-label="PDF 页面">
+      <div class="reader" id="reader" tabindex="0" aria-label="课件页面">
         <div id="page-stage"><div id="page-stack"></div></div>
         <template id="page-template">
           <section class="paper">
             <canvas class="pdf-canvas" aria-label="课本页面"></canvas>
-            <div class="textLayer" aria-label="PDF 文字"></div>
+            <div class="textLayer" aria-label="课件文字"></div>
             <canvas class="ink-canvas" width="1" height="1" aria-label="手写批注"></canvas>
             <canvas class="ink-preview" width="0" height="0" aria-hidden="true"></canvas>
             <div class="selection-rect" hidden></div>
@@ -178,7 +178,7 @@
   <dialog id="pdf-save-dialog">
     <header><h2>保存批注 PDF</h2><button type="button" id="pdf-save-close" aria-label="关闭">×</button></header>
     <div class="pdf-save-body">
-      <p>把本书的手写批注一起保存，保留原 PDF 的文字层。</p>
+      <p id="pdf-save-note">把本书的手写批注一起保存，保留原 PDF 的文字层。</p>
       <div class="pdf-save-actions"><button type="button" id="pdf-save-local" class="accent">保存到本机</button><button type="button" id="pdf-save-cloud" class="outline">上传飞书云盘</button></div>
       <p id="pdf-save-status" role="status"></p>
       <a id="pdf-cloud-link" target="_blank" rel="noopener noreferrer" hidden>打开飞书目标文件夹</a>
@@ -190,7 +190,7 @@
   <dialog id="library">
     <header><h2>书架</h2><button type="button" data-close aria-label="关闭">×</button></header>
     <div id="book-list" class="dialog-body"></div>
-    <footer><button type="button" id="library-import" class="accent">导入 PDF</button></footer>
+    <footer><button type="button" id="library-import" class="accent">导入课件</button></footer>
   </dialog>
 
   <dialog id="settings">

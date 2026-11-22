@@ -4,6 +4,7 @@ import 'pdfjs-dist/web/pdf_viewer.css';
 import { mixPoint, paintStrokes, traceInk } from './ink.js';
 import { InkTools } from './ink-tools.js';
 import { readState, saveState } from './storage.js';
+import { formats } from './book-format.js';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 const byId = (id) => document.getElementById(id);
@@ -135,7 +136,7 @@ export class Reader {
       clearTimeout(resize);
       resize = setTimeout(() => {
         const width = this.availableWidth();
-        if (this.pdf && !this.pinch && width > 0 && Math.abs(width - this.lastWidth) > 1) this.reflow();
+        if (this.documentSource && !this.pinch && width > 0 && Math.abs(width - this.lastWidth) > 1) this.reflow();
       }, 140);
     }).observe(this.reader);
     this.sync();
@@ -161,29 +162,31 @@ export class Reader {
     }
     const revision = ++this.openRevision;
     this.loading?.destroy().catch(() => {});
-    this.showStatus('正在打开课本…');
-    const options = {
-      cMapUrl: '/pdf/cmaps/',
-      cMapPacked: true,
-      standardFontDataUrl: '/pdf/fonts/',
-      wasmUrl: '/pdf/wasm/',
-      isEvalSupported: false,
-    };
-    const source = book.file ? { data: await book.file.arrayBuffer() } : { url: '/sample.pdf' };
-    if (revision !== this.openRevision) return false;
-    const task = getDocument({ ...options, ...source });
-    this.loading = task;
-    task.onPassword = (update, reason) => {
-      const password = window.prompt(reason === 2 ? '密码错误，请重新输入 PDF 密码' : '请输入此 PDF 的密码');
-      if (password) update(password);
-      else task.destroy().catch(() => {});
-    };
+    const extension = book.extension || 'pdf';
+    this.showStatus(extension === 'pdf' ? '正在打开课本…' : `正在本机打开 ${formats[extension]} 课件…`);
+    let task;
     try {
-      const pdf = await task.promise;
+      if (extension === 'pdf') {
+        const source = book.file ? { data: await book.file.arrayBuffer() } : { url: '/sample.pdf' };
+        if (revision !== this.openRevision) return false;
+        task = getDocument({ cMapUrl: '/pdf/cmaps/', cMapPacked: true,
+          standardFontDataUrl: '/pdf/fonts/', wasmUrl: '/pdf/wasm/', isEvalSupported: false, ...source });
+        task.onPassword = (update, reason) => {
+          const password = window.prompt(reason === 2 ? '密码错误，请重新输入 PDF 密码' : '请输入此 PDF 的密码');
+          if (password) update(password);
+          else task.destroy().catch(() => {});
+        };
+      } else {
+        const { openOffice } = await import('./office.js');
+        if (revision !== this.openRevision) return false;
+        task = openOffice(book.file, extension);
+      }
+      this.loading = task;
+      const documentSource = await task.promise;
       const [prior, position, first] = await Promise.all([
         readState(`reader:${book.id}`).catch(() => null),
         readState(`reader-position:${book.id}`).catch(() => null),
-        pdf.getPage(1),
+        documentSource.getPage(1),
       ]);
       if (revision !== this.openRevision) {
         await task.destroy();
@@ -194,24 +197,24 @@ export class Reader {
       this.pageObserver.disconnect();
       for (const surface of this.surfaces) this.releaseSurface(surface);
       this.nearby.clear();
-      this.pdf?.destroy().catch(() => {});
+      this.documentSource?.destroy().catch(() => {});
       this.revision++;
-      this.pdf = pdf;
+      this.documentSource = documentSource;
       this.book = book;
       this.pages = prior?.pages || {};
       const view = position || prior;
       this.savedOffset = Number(view?.offset) || 0;
       this.zoom = clamp(Number(view?.zoom) || 1, zoomMin, zoomMax);
-      this.page = clamp(view?.page || 1, 1, pdf.numPages);
+      this.page = clamp(view?.page || 1, 1, documentSource.numPages);
       if (!this.bookHistories.has(book.id)) this.bookHistories.set(book.id, new Map());
       this.history = this.bookHistories.get(book.id);
       const fallback = first.getViewport({ scale: 1 });
       this.lastWidth = this.availableWidth() || this.lastWidth || 560;
       const list = document.createDocumentFragment();
-      this.surfaces = Array.from({ length: pdf.numPages }, (_, i) => {
+      this.surfaces = Array.from({ length: documentSource.numPages }, (_, i) => {
         const paper = document.createElement('div');
         paper.className = 'page-slot';
-        const surface = { pdf, number: i + 1, paper, viewport: fallback, generation: 0 };
+        const surface = { source: documentSource, number: i + 1, paper, viewport: fallback, generation: 0 };
         this.surfacesByElement.set(paper, surface);
         this.sizeSurface(surface);
         list.append(paper);
@@ -229,9 +232,12 @@ export class Reader {
       return revision === this.openRevision;
     } catch (error) {
       if (revision !== this.openRevision) return false;
-      task.destroy().catch(() => {});
-      this.showStatus(this.pdf ? '' : '打开失败，请尝试另一份 PDF。');
-      throw new Error(`无法打开课本。 ${error.message || ''}`);
+      task?.destroy().catch(() => {});
+      this.showStatus(this.documentSource ? '' : '打开失败，请尝试另一份课件。');
+      if (extension !== 'pdf' && !error.message?.includes('文档')) {
+        throw new Error(`无法打开此 ${formats[extension]} 文件。可以用 Office 或 WPS 另存为新版格式或 PDF 后再导入。`);
+      }
+      throw new Error(`无法打开课件。 ${error.message || ''}`);
     } finally {
       if (revision === this.openRevision) this.restoring = false;
       if (this.loading === task) this.loading = null;
@@ -266,7 +272,7 @@ export class Reader {
   }
 
   pageAtScroll() {
-    if (this.restoring || this.pointer || this.pinch || !this.pdf || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
+    if (this.restoring || this.pointer || this.pinch || !this.documentSource || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
     const reader = this.reader.getBoundingClientRect();
     const focus = reader.top + Math.min(120, reader.height * .22);
     let best;
@@ -287,7 +293,7 @@ export class Reader {
     let releasedCurrent = false;
     for (const entry of entries) {
       const surface = this.surfacesByElement.get(entry.target);
-      if (!surface || surface.pdf !== this.pdf) continue;
+      if (!surface || surface.source !== this.documentSource) continue;
       if (entry.isIntersecting) {
         this.nearby.add(surface);
         if (!this.pinch) this.render(surface).catch(this.onError);
@@ -421,14 +427,15 @@ export class Reader {
   }
 
   async drawSurface(surface, generation) {
-    const stillCurrent = () => surface.generation === generation && surface.pdf === this.pdf;
+    const stillCurrent = () => surface.generation === generation && surface.source === this.documentSource;
     try {
-      const page = await surface.pdf.getPage(surface.number);
+      const page = await surface.source.getPage(surface.number);
       if (!stillCurrent()) return;
       surface.viewport = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: this.sizeSurface(surface) });
       const contents = byId('page-template').content.firstElementChild.cloneNode(true);
       const [canvas, textLayer, ink, overlay, rect] = contents.children;
+      if (surface.source.office) textLayer.className = 'office-text';
       const refresh = surface.rendered;
       if (!refresh) {
         surface.paper.setAttribute('aria-label', `第 ${surface.number} 页`);
@@ -472,10 +479,18 @@ export class Reader {
     if (surface.textItems) return Promise.resolve(true);
     if (surface.textPending) return surface.textPending;
     const generation = surface.generation;
-    const current = () => surface.generation === generation && surface.pdf === this.pdf;
+    const current = () => surface.generation === generation && surface.source === this.documentSource;
     surface.textPending = (async () => {
       try {
-        const page = await surface.pdf.getPage(surface.number);
+        const page = await surface.source.getPage(surface.number);
+        if (surface.source.office) {
+          const { officeTextItems } = await import('./office.js');
+          const runs = await page.textRuns(surface.displayViewport);
+          if (!current()) return false;
+          surface.textDivs = page.placeText(surface.textLayer, surface.displayViewport, runs);
+          surface.textItems = officeTextItems(runs);
+          return true;
+        }
         const content = await page.getTextContent();
         if (!current()) return false;
         surface.textLayer.replaceChildren();
@@ -503,17 +518,20 @@ export class Reader {
   }
 
   sync() {
-    const canRead = Boolean(this.pdf);
+    const canRead = Boolean(this.documentSource);
     const { title, sample } = this.book || {};
     if (title) byId('book-title').textContent = title;
-    if (canRead) byId('book-meta').textContent = sample ? '讲课台示例' : `本机课本 · ${this.pdf.numPages} 页`;
+    const type = formats[this.book?.extension] || 'PDF';
+    byId('book-format').textContent = type;
+    if (canRead) byId('book-meta').textContent = sample ? '讲课台示例' : `${type} · ${this.documentSource.numPages} 页`;
+    byId('pdf-save-note').textContent = this.documentSource?.office ? '将课件页面和手写批注保存为 PDF。' : '把本书的手写批注一起保存，保留原 PDF 的文字层。';
     byId('page-number').value = this.page;
-    byId('page-number').max = this.pdf?.numPages || 1;
+    byId('page-number').max = this.documentSource?.numPages || 1;
     byId('page-number').disabled = !canRead;
     byId('pdf-export').disabled = !canRead;
-    byId('page-total').textContent = `/ ${this.pdf?.numPages || '—'}`;
+    byId('page-total').textContent = `/ ${this.documentSource?.numPages || '—'}`;
     byId('prev').disabled = !canRead || this.page <= 1;
-    byId('next').disabled = !canRead || this.page >= this.pdf.numPages;
+    byId('next').disabled = !canRead || this.page >= this.documentSource.numPages;
     byId('page-quote').disabled = !this.rendered;
     byId('zoom-reset').textContent = `${Math.round(this.zoom * 100)}%`;
     byId('zoom-out').disabled = !canRead || this.zoom <= zoomMin;
@@ -526,9 +544,9 @@ export class Reader {
   }
 
   async setPage(number) {
-    if (!this.pdf) return;
+    if (!this.documentSource) return;
     if (this.pinch) this.endPinch();
-    const target = clamp(Math.trunc(number) || this.page, 1, this.pdf.numPages);
+    const target = clamp(Math.trunc(number) || this.page, 1, this.documentSource.numPages);
     if (target === this.page) {
       byId('page-number').value = this.page;
       return;
@@ -541,7 +559,7 @@ export class Reader {
   }
 
   setZoom(value) {
-    if (!this.pdf) return;
+    if (!this.documentSource) return;
     if (this.pinch) this.endPinch();
     const zoom = clamp(value, zoomMin, zoomMax);
     if (zoom === this.zoom) return;
@@ -589,7 +607,7 @@ export class Reader {
   }
 
   pointerDown(event) {
-    if (!this.pdf || this.pointer || this.pinch || this.pinchTail || event.button !== 0) return;
+    if (!this.documentSource || this.pointer || this.pinch || this.pinchTail || event.button !== 0) return;
     const canvas = event.target.closest('.ink-canvas');
     if (!canvas) return;
     const touch = event.pointerType === 'touch' || !event.pointerType;
@@ -654,7 +672,7 @@ export class Reader {
   }
 
   touchStart(event) {
-    if (!this.pdf) return;
+    if (!this.documentSource) return;
     if (this.pointer?.stylus || this.pinch || this.pinchTail) {
       if (event.cancelable) event.preventDefault();
       return;
