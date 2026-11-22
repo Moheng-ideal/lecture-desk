@@ -134,7 +134,7 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .ink-panel { position: absolute; z-index: 8; inset: calc(100% + 4px) auto auto 12px; width: min(325px, calc(100% - 24px)); max-height: min(440px, 55dvh); overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 12px 30px #302a2335; }
 .ink-panel header, .ink-switch { display: flex; justify-content: space-between; align-items: center; }
 .ink-panel header button { min-width: 42px; font-size: 1.25rem; }
-#ink-preview { width: 100%; display: block; margin: 4px 0 10px; border-radius: 9px; background: #f1eee5; }
+.ink-sample { width: 100%; display: block; margin: 4px 0 10px; border-radius: 9px; background: #f1eee5; }
 .ink-choices { display: flex; flex-wrap: wrap; gap: 4px; }
 .ink-choices button { flex: 1 0 auto; padding-inline: 8px; background: var(--cream); font-size: .85rem; }
 .ink-choices button[aria-pressed="true"] { color: var(--green); background: var(--accent-soft); }
@@ -147,7 +147,7 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .ink-swatches button { width: 34px; padding: 0; display: grid; place-items: center; }
 .ink-swatches button::after { content: ''; width: 22px; height: 22px; background: var(--swatch); border-radius: 50%; }
 .ink-swatches button[aria-pressed="true"] { outline: 1px solid #81907b; }
-#erase-page { width: 100%; margin-top: 6px; }
+.ink-clear { width: 100%; margin-top: 6px; }
 .pdf-save-body { padding: 16px; display: grid; gap: 12px; }
 .pdf-save-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 #pdf-save-status:empty { display: none; }
@@ -228,6 +228,7 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .board-zoom { display: flex; align-items: center; margin-left: auto; font-variant-numeric: tabular-nums; }
 .board-zoom button { min-height: 36px; min-width: 35px; padding-inline: 5px; }
 #board-zoom-reset { min-width: 49px; }
+.board-tool-area { position: relative; z-index: 5; }
 .board-tools { display: flex; align-items: center; gap: 3px; padding: 2px 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
 .board-tools button { min-height: 36px; padding-inline: 8px; }
 #board-close { min-height: 36px; }
@@ -242,7 +243,6 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 #workspace[data-board-open] .composer-actions { flex-wrap: wrap; }
 #workspace[data-board-open] .composer textarea { min-height: 40px; padding-block: 3px; }
 #workspace[data-board-open] .composer #excerpts { max-height: 58px; overflow: auto; }
-.board-tools input, .board-tools select { min-height: 32px; max-width: 51px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
 #board-surface { position: relative; flex: 1; min-height: 0; background: #fff; overflow: hidden; }
 #board-surface canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 #board-ink { touch-action: none; cursor: crosshair; }

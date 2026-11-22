@@ -1,7 +1,7 @@
 import { getDocument, GlobalWorkerOptions, TextLayer } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { mixPoint, paintStrokes, traceInk } from './ink.js';
+import { inkContact, mixPoint, paintStrokes, traceInk } from './ink.js';
 import { InkTools } from './ink-tools.js';
 import { readState, saveState } from './storage.js';
 import { formats } from './book-format.js';
@@ -75,16 +75,16 @@ export class Reader {
     this.bookHistories = new Map();
     this.revision = 0;
     this.openRevision = 0;
-    this.inkTools = new InkTools(this);
+    this.inkTools = new InkTools(this, {
+      host: byId('pdf-tools').parentElement, button: byId('ink-config'), modes: byId('modes'),
+      clear: () => this.clearPageInk(),
+    });
     this.setTool('read');
 
     byId('modes').addEventListener('click', (event) => {
       const button = event.target.closest('[data-tool]');
       if (!button) return;
-      const tool = button.dataset.tool;
-      const open = this.inkTools.panel.hidden || tool !== this.tool;
-      this.setTool(tool);
-      this.inkTools.toggle(open && ['pen', 'marker', 'eraser'].includes(tool));
+      this.inkTools.select(button.dataset.tool);
     });
     byId('native-select').onclick = () => this.setTool(this.tool === 'native' ? 'select' : 'native');
     byId('use-selection').onclick = () => this.quoteSelection().catch(this.onError);
@@ -610,12 +610,7 @@ export class Reader {
     if (!this.documentSource || this.pointer || this.pinch || this.pinchTail || event.button !== 0) return;
     const canvas = event.target.closest('.ink-canvas');
     if (!canvas) return;
-    const touch = event.pointerType === 'touch' || !event.pointerType;
-    let nativePressure = -1;
-    if (touch && event.isPrimary) {
-      try { nativePressure = window.LectureDeskNative?.penAtContact?.() ?? -1; } catch { /* Browser fallback. */ }
-    }
-    const stylus = event.pointerType === 'pen' || nativePressure >= 0;
+    const { touch, stylus, nativePressure } = inkContact(event);
     if (touch && !stylus && !this.fingerInk) return;
     const surface = this.surfacesByElement.get(canvas.closest('.page-slot'));
     if (!surface?.rendered) return;

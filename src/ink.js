@@ -1,5 +1,14 @@
 const pressure = (point) => point.pressure ?? .5;
 
+export function inkContact(event) {
+  const touch = event.pointerType === 'touch' || !event.pointerType;
+  let nativePressure = -1;
+  if (touch && event.isPrimary) {
+    try { nativePressure = globalThis.LectureDeskNative?.penAtContact?.() ?? -1; } catch { /* Use the pointer data. */ }
+  }
+  return { touch, stylus: event.pointerType === 'pen' || nativePressure >= 0, nativePressure };
+}
+
 export function mixPoint(a, b, t) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
     pressure: pressure(a) + (pressure(b) - pressure(a)) * t };
@@ -138,7 +147,9 @@ export function paintInkStroke(ctx, stroke, width = 1, height = 1, scale = 1) {
   ctx.save();
   ctx.fillStyle = color;
   ctx.globalAlpha = stroke.opacity ?? (tool === 'marker' ? .29 : 1);
-  const radius = (p) => Math.max(.3, stroke.size * scale * brushWeight(stroke, p) / 2);
+  const { a, b } = ctx.getTransform();
+  const minimumRadius = .3 / (Math.hypot(a, b) || 1);
+  const radius = (p) => Math.max(minimumRadius, stroke.size * scale * brushWeight(stroke, p) / 2);
   ctx.beginPath();
   for (let i = 0; i < points.length; i++) {
     const p = points[i];

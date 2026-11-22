@@ -55,36 +55,38 @@
           </div>
         </div>
         <button type="button" id="book-fullscreen" aria-pressed="false" class="quiet" title="展开左侧课本">全屏</button>
-        <section id="ink-panel" class="ink-panel" aria-label="批注工具设置" hidden>
-          <header><strong id="ink-heading">笔刷</strong><button type="button" id="ink-close" aria-label="关闭批注工具设置">×</button></header>
-          <canvas id="ink-preview" width="520" height="106" aria-label="笔触预览"></canvas>
-          <div id="pen-options">
-            <div class="ink-choices" id="brush-choices" aria-label="笔刷类型">
-              <button type="button" data-brush="ball">圆珠笔</button>
-              <button type="button" data-brush="fountain">钢笔</button>
-              <button type="button" data-brush="felt">签字笔</button>
-              <button type="button" data-brush="brush">毛笔</button>
-              <button type="button" data-brush="marker">荧光笔</button>
+        <template id="ink-panel-template">
+          <section id="ink-panel" class="ink-panel" aria-label="批注工具设置" hidden>
+            <header><strong id="ink-heading">笔刷</strong><button type="button" id="ink-close" aria-label="关闭批注工具设置">×</button></header>
+            <canvas id="ink-preview" class="ink-sample" width="520" height="106" aria-label="笔触预览"></canvas>
+            <div id="pen-options">
+              <div class="ink-choices" id="brush-choices" aria-label="笔刷类型">
+                <button type="button" data-brush="ball">圆珠笔</button>
+                <button type="button" data-brush="fountain">钢笔</button>
+                <button type="button" data-brush="felt">签字笔</button>
+                <button type="button" data-brush="brush">毛笔</button>
+                <button type="button" data-brush="marker">荧光笔</button>
+              </div>
+              <label class="ink-range">粗细 <output for="ink-size"></output><input id="ink-size" type="range" min="1" max="32" step="1"></label>
+              <label class="ink-range">不透明度 <output for="ink-opacity"></output><input id="ink-opacity" type="range" min="5" max="100"></label>
+              <div class="ink-swatches" id="ink-swatches" aria-label="常用颜色"></div>
+              <label class="ink-switch">自选颜色 <input id="ink-color" type="color" aria-label="自选颜色"></label>
             </div>
-            <label class="ink-range">粗细 <output for="ink-size"></output><input id="ink-size" type="range" min="1" max="32" step="1"></label>
-            <label class="ink-range">不透明度 <output for="ink-opacity"></output><input id="ink-opacity" type="range" min="5" max="100"></label>
-            <div class="ink-swatches" id="ink-swatches" aria-label="常用颜色"></div>
-            <label class="ink-switch">自选颜色 <input id="ink-color" type="color" aria-label="自选颜色"></label>
-          </div>
-          <div id="eraser-options" hidden>
-            <div class="ink-choices" id="erase-choices" aria-label="擦除方式">
-              <button type="button" data-erase="point">点擦除</button>
-              <button type="button" data-erase="stroke">笔划擦除</button>
-              <button type="button" data-erase="lasso">圈选擦除</button>
+            <div id="eraser-options" hidden>
+              <div class="ink-choices" id="erase-choices" aria-label="擦除方式">
+                <button type="button" data-erase="point">点擦除</button>
+                <button type="button" data-erase="stroke">笔划擦除</button>
+                <button type="button" data-erase="lasso">圈选擦除</button>
+              </div>
+              <label class="ink-range">擦除直径 <output for="erase-size"></output><input id="erase-size" type="range" min="6" max="96"></label>
+              <label class="ink-switch">仅擦除荧光笔 <input id="erase-marker" type="checkbox"></label>
+              <label class="ink-switch">压感橡皮擦 <input id="erase-pressure" type="checkbox"></label>
+              <label class="ink-range">压感灵敏度 <output for="erase-sensitivity"></output><input id="erase-sensitivity" type="range" min="0" max="100"></label>
+              <label class="ink-switch">擦完回到画笔 <input id="erase-return" type="checkbox"></label>
+              <button type="button" id="erase-page" class="outline ink-clear">清空本页批注</button>
             </div>
-            <label class="ink-range">擦除直径 <output for="erase-size"></output><input id="erase-size" type="range" min="6" max="96"></label>
-            <label class="ink-switch">仅擦除荧光笔 <input id="erase-marker" type="checkbox"></label>
-            <label class="ink-switch">压感橡皮擦 <input id="erase-pressure" type="checkbox"></label>
-            <label class="ink-range">压感灵敏度 <output for="erase-sensitivity"></output><input id="erase-sensitivity" type="range" min="0" max="100"></label>
-            <label class="ink-switch">擦完回到画笔 <input id="erase-return" type="checkbox"></label>
-            <button type="button" id="erase-page" class="outline">清空本页批注</button>
-          </div>
-        </section>
+          </section>
+        </template>
       </div>
 
       <div class="selection-bar" id="selection-bar" hidden>
@@ -134,15 +136,16 @@
           </div>
           <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
         </header>
-        <div class="board-tools" aria-label="白板工具">
-          <button type="button" data-board-tool="pen" aria-pressed="true">笔</button>
-          <button type="button" data-board-tool="eraser" aria-pressed="false">橡皮</button>
-          <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
-          <input type="color" id="board-color" value="#263a35" aria-label="白板笔颜色">
-          <label class="sr-only" for="board-size">白板笔粗细</label>
-          <select id="board-size"><option value="3">细</option><option value="5" selected>中</option><option value="10">粗</option></select>
-          <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
-          <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+        <div class="board-tool-area">
+          <div class="board-tools" id="board-tools" aria-label="白板工具">
+            <button type="button" data-board-tool="pen" aria-pressed="true" title="触控笔写字，手指拖动画布">笔</button>
+            <button type="button" data-board-tool="marker" aria-pressed="false">荧光笔</button>
+            <button type="button" data-board-tool="eraser" aria-pressed="false" title="触控笔擦除，手指拖动画布">橡皮</button>
+            <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
+            <button type="button" id="board-ink-config" class="quiet" aria-controls="board-ink-panel" aria-expanded="false" aria-label="白板笔刷设置">笔刷设置</button>
+            <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
+            <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+          </div>
         </div>
         <div id="board-surface">
           <canvas id="board-ink" aria-label="白板画布"></canvas>

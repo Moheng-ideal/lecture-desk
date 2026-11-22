@@ -1,4 +1,5 @@
-import { eraseAt, mixPoint, paintInkStroke, traceInk } from './ink.js';
+import { inkContact, mixPoint, paintInkStroke, traceInk } from './ink.js';
+import { InkTools } from './ink-tools.js';
 import { readState, saveState } from './storage.js';
 
 const home = { x: 0, y: 0, zoom: 1 };
@@ -37,7 +38,8 @@ export function installWhiteboard({ notify }) {
   const zoomIn = id('board-zoom-in');
   const zoomOut = id('board-zoom-out');
   const zoomReset = id('board-zoom-reset');
-  const modes = board.querySelectorAll('[data-board-tool]');
+  const toolbar = id('board-tools');
+  const modes = toolbar.querySelectorAll('[data-board-tool]');
   const history = [];
   const contacts = new Map();
   const strokeBounds = new WeakMap();
@@ -45,6 +47,7 @@ export function installWhiteboard({ notify }) {
   let oldInk;
   let camera = home;
   let mode = 'pen';
+  let lastPen = mode;
   let action;
   let pinch;
   let pinchTail = false;
@@ -55,6 +58,11 @@ export function installWhiteboard({ notify }) {
   let redrawInk = true;
   let previewVisible = false;
   let saveTimer;
+
+  const tools = new InkTools({ get tool() { return mode; }, setTool }, {
+    host: toolbar.parentElement, button: id('board-ink-config'), modes: toolbar,
+    prefix: 'board-', storageKey: 'whiteboardInkTools', clear: clearInk, clearLabel: '清空白板',
+  });
 
   const center = () => ({ x: width / 2, y: height / 2 });
   const worldAt = (screen) => ({
@@ -111,9 +119,12 @@ export function installWhiteboard({ notify }) {
         }
       }
     }
-    if (action?.draft) {
-      const draft = { ...action.draft, points: [...action.draft.points, action.last] };
-      paintInkStroke(paintContext(overlay), draft);
+    if (action?.draft || action?.tool === 'eraser') {
+      const ctx = paintContext(overlay);
+      if (action.draft) {
+        const draft = { ...action.draft, points: [...action.draft.points, action.last] };
+        paintInkStroke(ctx, draft);
+      } else drawEraser(ctx, action);
       previewVisible = true;
     } else if (previewVisible) {
       paintContext(overlay);
@@ -127,6 +138,21 @@ export function installWhiteboard({ notify }) {
   function schedulePaint(full = false) {
     redrawInk ||= full;
     if (!frame) frame = requestAnimationFrame(paint);
+  }
+
+  function drawEraser(ctx, active) {
+    ctx.strokeStyle = '#506955';
+    ctx.lineWidth = 1.5 / camera.zoom;
+    ctx.setLineDash([4 / camera.zoom, 3 / camera.zoom]);
+    ctx.beginPath();
+    if (tools.eraser.mode === 'lasso') {
+      for (const point of active.path) ctx.lineTo(point.x, point.y);
+      ctx.closePath();
+    } else {
+      const point = active.last;
+      ctx.arc(point.x, point.y, tools.radius(point, active.stylus) / camera.zoom, 0, 2 * Math.PI);
+    }
+    ctx.stroke();
   }
 
   function refresh() {
@@ -162,8 +188,10 @@ export function installWhiteboard({ notify }) {
     }
     if (cancelled) ink = active.previous;
     else if (active.draft) ink = [...ink, active.draft];
+    else if (tools.eraser.mode === 'lasso') ink = tools.erase(ink, active.path, active.last, 1, 1, 1, active.stylus);
     if (ink !== active.previous) remember(active.previous);
     refresh();
+    if (!cancelled && active.tool === 'eraser' && tools.eraser.returnToPen) setTool(lastPen);
   }
 
   function resize() {
@@ -198,6 +226,7 @@ export function installWhiteboard({ notify }) {
       pinch = null;
       pinchTail = false;
       for (const key of captures) if (canvas.hasPointerCapture(key)) canvas.releasePointerCapture(key);
+      tools.toggle(false);
       persist();
     }
     board.hidden = !visible;
@@ -212,26 +241,31 @@ export function installWhiteboard({ notify }) {
     open.focus();
   };
 
-  for (const control of modes) {
-    control.onclick = () => {
-      mode = control.dataset.boardTool;
-      surface.toggleAttribute('data-moving', mode === 'pan');
-      for (const button of modes) button.setAttribute('aria-pressed', String(button === control));
-    };
+  function setTool(tool) {
+    if (tool !== mode) endAction(true);
+    mode = tool;
+    if (tool === 'pen' || tool === 'marker') lastPen = tool;
+    surface.toggleAttribute('data-moving', tool === 'pan');
+    for (const button of modes) button.setAttribute('aria-pressed', String(button.dataset.boardTool === tool));
+    tools.sync();
   }
+  for (const button of modes) button.onclick = () => tools.select(button.dataset.boardTool);
   undo.onclick = () => {
+    endAction(true);
     if (!history.length) return;
     ink = history.pop();
     persist();
     refresh();
   };
-  clear.onclick = () => {
+  function clearInk() {
+    endAction(true);
     if (!ink.length) return;
     const previous = ink;
     ink = [];
     remember(previous);
     refresh();
-  };
+  }
+  clear.onclick = clearInk;
 
   function zoomAt(screen, scale) {
     if (!ready || !width || !height || action || pinch) return;
@@ -256,16 +290,21 @@ export function installWhiteboard({ notify }) {
   }
 
   function erase(active, point) {
-    const radius = 15 / camera.zoom;
     const previous = active.last;
-    const steps = Math.max(1, Math.ceil(Math.hypot(point.x - previous.x, point.y - previous.y) / (radius * .55)));
     const before = ink;
-    for (let i = 1; i <= steps && ink.length; i++) {
-      const p = mixPoint(previous, point, i / steps);
-      ink = eraseAt(ink, p, 1, 1, radius, { mode: 'point', zoom: 1 });
+    if (tools.eraser.mode === 'lasso') {
+      if (point.x !== previous.x || point.y !== previous.y) active.path.push(point);
+    } else {
+      const radius = Math.min(tools.radius(previous, active.stylus), tools.radius(point, active.stylus));
+      const distance = Math.hypot(point.x - previous.x, point.y - previous.y) * camera.zoom;
+      const steps = Math.max(1, Math.ceil(distance / Math.max(2, radius * .6)));
+      for (let i = 1; i <= steps && ink.length; i++) {
+        const sample = mixPoint(previous, point, i / steps);
+        ink = tools.erase(ink, active.path, sample, 1, 1, 1, active.stylus, 1 / camera.zoom);
+      }
     }
     active.last = point;
-    if (ink !== before) schedulePaint(true);
+    schedulePaint(ink !== before);
   }
 
   function moveAction(event, end = false) {
@@ -288,14 +327,15 @@ export function installWhiteboard({ notify }) {
 
   canvas.onpointerdown = (event) => {
     if (!ready || !width || !height || event.button !== 0) return;
-    const touch = event.pointerType === 'touch';
-    let nativePressure = -1;
-    if (touch && event.isPrimary) {
-      try { nativePressure = window.LectureDeskNative?.penAtContact?.() ?? -1; } catch { /* Use the pointer data. */ }
+    const { touch, stylus, nativePressure } = inkContact(event);
+    const finger = touch && !stylus;
+    if (finger && action?.stylus) return;
+    if (stylus && action?.finger) {
+      endAction(false);
+      contacts.clear();
     }
-    const stylus = event.pointerType === 'pen' || nativePressure >= 0;
     const screen = pointOnCanvas(event, canvas.getBoundingClientRect());
-    if (touch && !stylus && !action?.stylus) {
+    if (finger) {
       contacts.set(event.pointerId, screen);
       canvas.setPointerCapture(event.pointerId);
       if (contacts.size === 2 && !pinchTail && !pinch) {
@@ -307,20 +347,22 @@ export function installWhiteboard({ notify }) {
     }
     if (pinch || pinchTail || action) return;
     if (!canvas.hasPointerCapture(event.pointerId)) canvas.setPointerCapture(event.pointerId);
-    action = { id: event.pointerId, tool: mode, stylus, previous: ink };
-    if (mode === 'pan') action.anchor = worldAt(screen);
+    const tool = finger ? 'pan' : mode;
+    action = { id: event.pointerId, tool, finger, stylus, previous: ink };
+    if (tool === 'pan') action.anchor = worldAt(screen);
     else {
       const point = pointInWorld(event, screen, action);
       if (nativePressure > 0) point.pressure = nativePressure;
       action.last = point;
-      if (mode === 'pen') {
-        action.draft = {
-          tool: 'pen', brush: 'ball', points: [point],
-          color: id('board-color').value,
-          size: Number(id('board-size').value),
-        };
+      if (tool === 'pen' || tool === 'marker') {
+        action.draft = tools.stroke([point]);
+        // Store a world-space width that matches the selected screen width at this zoom.
+        action.draft.size /= camera.zoom;
         schedulePaint();
-      } else erase(action, point);
+      } else {
+        action.path = [point];
+        erase(action, point);
+      }
     }
     event.preventDefault();
   };
