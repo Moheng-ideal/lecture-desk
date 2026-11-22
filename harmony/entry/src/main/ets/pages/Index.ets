@@ -1,7 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { picker } from '@kit.CoreFileKit';
-import { APP_ORIGIN, interceptDeskAssets } from './DeskAssets';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { APP_ORIGIN, deskAssetResponse } from './DeskAssets';
 import { DeskBridge } from './DeskBridge';
 
 @Entry
@@ -9,7 +10,6 @@ import { DeskBridge } from './DeskBridge';
 struct Index {
   @State startupFailed: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
-  private schemeHandler: webview.WebSchemeHandler = new webview.WebSchemeHandler();
   private native: DeskBridge = new DeskBridge(this.controller, () => this.getAbility());
 
   private getAbility(): common.UIAbilityContext {
@@ -34,7 +34,7 @@ struct Index {
 
   build() {
     Stack() {
-      Web({ src: 'about:blank', controller: this.controller })
+      Web({ src: APP_ORIGIN + '/', controller: this.controller })
         .width('100%')
         .height('100%')
         .javaScriptAccess(true)
@@ -46,12 +46,11 @@ struct Index {
           methodList: ['startHttp', 'cancelHttp', 'saveWord', 'openLink'],
           controller: this.controller,
         })
-        .onControllerAttached(() => {
-          try {
-            interceptDeskAssets(this.schemeHandler, this.getAbility().resourceManager);
-            this.controller.setWebSchemeHandler('https', this.schemeHandler);
-            this.controller.loadUrl(APP_ORIGIN + '/');
-          } catch {
+        // ArkWeb accepts null to pass through requests outside the bundled origin.
+        .onInterceptRequest((event) => deskAssetResponse(event.request)!)
+        .onErrorReceive((event) => {
+          if (event?.request.isMainFrame() && event.request.getRequestUrl().startsWith(APP_ORIGIN + '/')) {
+            hilog.error(0x2900, 'LectureDesk', 'Offline page load failed (%{public}d)', event.error.getErrorCode());
             this.startupFailed = true;
           }
         })

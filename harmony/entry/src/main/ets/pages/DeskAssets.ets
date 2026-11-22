@@ -1,6 +1,3 @@
-import { webview, WebNetErrorList } from '@kit.ArkWeb';
-import { resourceManager } from '@kit.LocalizationKit';
-
 export const APP_ORIGIN: string = 'https://lecture-desk.invalid';
 
 function resourcePath(url: string): string {
@@ -18,43 +15,24 @@ const mimeTypes: Map<string, string> = new Map([
   ['wasm', 'application/wasm'], ['gz', 'application/gzip'],
 ]);
 
-function respond(handler: webview.WebResourceHandler, url: string, status: number,
-  mime: string, data: ArrayBuffer, head: boolean): void {
-  const response = new webview.WebSchemeHandlerResponse();
-  response.setUrl(url);
-  response.setNetErrorCode(WebNetErrorList.NET_OK);
-  response.setStatus(status);
-  response.setStatusText(status === 200 ? 'OK' : 'Not Found');
-  response.setMimeType(mime);
-  if (mime.startsWith('text/') || mime === 'application/javascript' || mime.endsWith('json')) {
-    response.setEncoding('UTF-8');
-  }
-  response.setHeaderByName('Content-Length', data.byteLength.toString(), false);
-  response.setHeaderByName('Cache-Control', 'no-store', false);
-  response.setHeaderByName('X-Content-Type-Options', 'nosniff', false);
-  handler.didReceiveResponse(response);
-  if (!head && data.byteLength) handler.didReceiveResponseBody(data);
-  handler.didFinish();
-}
+export function deskAssetResponse(request: WebResourceRequest): WebResourceResponse | null {
+  const url = request.getRequestUrl();
+  if (!url.startsWith(APP_ORIGIN + '/')) return null;
 
-export function interceptDeskAssets(handler: webview.WebSchemeHandler, manager: resourceManager.ResourceManager): void {
-  handler.onRequestStart((request: webview.WebSchemeHandlerRequest, output: webview.WebResourceHandler): boolean => {
-    const url = request.getRequestUrl();
-    const method = request.getRequestMethod();
-    const path = url.startsWith(APP_ORIGIN + '/') ? resourcePath(url) : '';
-    let bytes: Uint8Array | undefined;
-    if (path && (method === 'GET' || method === 'HEAD')) {
-      try { bytes = manager.getRawFileContentSync(path); } catch { /* Serve a local 404. */ }
-    }
-    try {
-      if (bytes) {
-        const extension = path.split('.').pop() || '';
-        const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-        respond(output, url, 200, mimeTypes.get(extension) || 'application/octet-stream', buffer, method === 'HEAD');
-      } else {
-        respond(output, url, 404, 'text/plain', new ArrayBuffer(0), true);
-      }
-    } catch { /* ArkWeb already cancelled this request. */ }
-    return true;
-  });
+  const path = resourcePath(url);
+  const method = request.getRequestMethod();
+  const allowed = path !== '' && (method === 'GET' || method === 'HEAD');
+  const mime = mimeTypes.get(path.split('.').pop() || '') ?? 'application/octet-stream';
+  const response = new WebResourceResponse();
+  response.setResponseCode(allowed ? 200 : 404);
+  response.setReasonMessage(allowed ? 'OK' : 'Not Found');
+  response.setResponseMimeType(allowed ? mime : 'text/plain');
+  response.setResponseEncoding('UTF-8');
+  response.setResponseHeader([
+    { headerKey: 'X-Content-Type-Options', headerValue: 'nosniff' },
+    { headerKey: 'Cache-Control', headerValue: 'no-store' },
+  ]);
+  response.setResponseData(allowed && method === 'GET' ? $rawfile(path) : '');
+  response.setResponseIsReady(true);
+  return response;
 }

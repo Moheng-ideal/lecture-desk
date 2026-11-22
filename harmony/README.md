@@ -12,8 +12,9 @@
 
 ## 使用方式
 
+- 横屏同时显示左侧课本和右侧问答。竖屏通过顶部的「课本」「问答」切换。
 - 点「导入 PDF」打开系统文件选择器。课本、批注和问答保存在应用空间。
 - 点「设置」填写 DeepSeek 凭据，展开「飞书云文档 → 如何接入飞书」查看云文档授权步骤。
 - 用「问答录 → 保存 Word」选择保存在平板上的位置。
 
-工程 ZIP 用于在 DevEco Studio 构建。个人试用使用设备调试签名；如果要像应用市场里的普通应用一样下载，可通过 AppGallery Connect 的开放式测试向指定用户分发。[华为开放式测试](https://developer.huawei.com/consumer/cn/agconnect/open-test)
+工程 ZIP 用于在 DevEco Studio 构建。调试签名的 HAP 可通过 USB 安装到签名覆盖的设备。如果要通过应用市场向指定用户分发，可使用 AppGallery Connect 的开放式测试。[华为开放式测试](https://developer.huawei.com/consumer/cn/agconnect/open-test)
