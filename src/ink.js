@@ -23,14 +23,17 @@ export function traceInk(points, previous, next, { width, height }, end = false)
   return next;
 }
 
-function diameter(stroke, point, width, zoom) {
+function brushWeight(stroke, point) {
   const p = pressure(point);
   const profile = stroke.brush ?? (stroke.tool === 'marker' ? 'marker' : 'legacy');
-  const weight = {
+  return {
     legacy: .48 + p, ball: .82 + p * .36, fountain: .4 + p * 1.2,
     felt: .7 + p * .6, brush: .16 + p * 1.68, marker: 1,
   }[profile] ?? 1;
-  return stroke.size * (stroke.basis ? width / stroke.basis : zoom) * weight;
+}
+
+function diameter(stroke, point, width, zoom) {
+  return stroke.size * (stroke.basis ? width / stroke.basis : zoom) * brushWeight(stroke, point);
 }
 
 function circleCuts(a, b, point, width, height, radius) {
@@ -124,36 +127,41 @@ export function paintStrokes(canvas, strokes, zoom = 1, draft, cssWidth = canvas
   ctx.clearRect(0, 0, width, height);
   const pixels = width / Math.max(1, cssWidth);
   for (const stroke of draft ? [...strokes, draft] : strokes) {
-    const { points, tool, color } = stroke;
-    if (!points.length) continue;
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.globalAlpha = stroke.opacity ?? (tool === 'marker' ? .29 : 1);
-    const radius = (p) => Math.max(.3, diameter(stroke, p, cssWidth, zoom) * pixels / 2);
-    ctx.beginPath();
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const x = p.x * width;
-      const y = p.y * height;
-      const r = radius(p);
-      ctx.moveTo(x + r, y);
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      if (!i) continue;
-      const prev = points[i - 1];
-      const px = prev.x * width;
-      const py = prev.y * height;
-      const distance = Math.hypot(x - px, y - py);
-      if (!distance) continue;
-      const nx = (py - y) / distance;
-      const ny = (x - px) / distance;
-      const previousRadius = radius(prev);
-      ctx.moveTo(px - nx * previousRadius, py - ny * previousRadius);
-      ctx.lineTo(x - nx * r, y - ny * r);
-      ctx.lineTo(x + nx * r, y + ny * r);
-      ctx.lineTo(px + nx * previousRadius, py + ny * previousRadius);
-      ctx.closePath();
-    }
-    ctx.fill();
-    ctx.restore();
+    const scale = (stroke.basis ? cssWidth / stroke.basis : zoom) * pixels;
+    paintInkStroke(ctx, stroke, width, height, scale);
   }
+}
+
+export function paintInkStroke(ctx, stroke, width = 1, height = 1, scale = 1) {
+  const { points, tool, color } = stroke;
+  if (!points.length) return;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = stroke.opacity ?? (tool === 'marker' ? .29 : 1);
+  const radius = (p) => Math.max(.3, stroke.size * scale * brushWeight(stroke, p) / 2);
+  ctx.beginPath();
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const x = p.x * width;
+    const y = p.y * height;
+    const r = radius(p);
+    ctx.moveTo(x + r, y);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (!i) continue;
+    const prev = points[i - 1];
+    const px = prev.x * width;
+    const py = prev.y * height;
+    const distance = Math.hypot(x - px, y - py);
+    if (!distance) continue;
+    const nx = (py - y) / distance;
+    const ny = (x - px) / distance;
+    const previousRadius = radius(prev);
+    ctx.moveTo(px - nx * previousRadius, py - ny * previousRadius);
+    ctx.lineTo(x - nx * r, y - ny * r);
+    ctx.lineTo(x + nx * r, y + ny * r);
+    ctx.lineTo(px + nx * previousRadius, py + ny * previousRadius);
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.restore();
 }

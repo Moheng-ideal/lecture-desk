@@ -225,6 +225,9 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 #class-board { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); }
 .board-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 12px; border-bottom: 1px solid var(--line); }
 .board-head h2 { font-size: 1.02rem; }
+.board-zoom { display: flex; align-items: center; margin-left: auto; font-variant-numeric: tabular-nums; }
+.board-zoom button { min-height: 36px; min-width: 35px; padding-inline: 5px; }
+#board-zoom-reset { min-width: 49px; }
 .board-tools { display: flex; align-items: center; gap: 3px; padding: 2px 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
 .board-tools button { min-height: 36px; padding-inline: 8px; }
 #board-close { min-height: 36px; }
@@ -240,8 +243,12 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 #workspace[data-board-open] .composer textarea { min-height: 40px; padding-block: 3px; }
 #workspace[data-board-open] .composer #excerpts { max-height: 58px; overflow: auto; }
 .board-tools input, .board-tools select { min-height: 32px; max-width: 51px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
-#board-surface { flex: 1; min-height: 0; display: grid; place-items: center; background: var(--desk); overflow: hidden; }
-#board-ink { display: block; touch-action: none; cursor: crosshair; background-color: #fffefa; background-image: radial-gradient(#c7d3dc 1px, transparent 1px); background-size: 19px 19px; }
+#board-surface { position: relative; flex: 1; min-height: 0; background: #fff; overflow: hidden; }
+#board-surface canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+#board-ink { touch-action: none; cursor: crosshair; }
+#board-surface[data-moving] #board-ink { cursor: grab; }
+#board-surface[data-moving] #board-ink:active { cursor: grabbing; }
+#board-draft { pointer-events: none; }
 .excerpt-chip details { flex: 1; min-width: 0; font-size: .84rem; }
 .excerpt-chip summary { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; cursor: pointer; }
 .excerpt-chip p { white-space: pre-wrap; max-height: 8rem; overflow: auto; margin: 5px 0; overflow-wrap: anywhere; }

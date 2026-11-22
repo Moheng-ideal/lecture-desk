@@ -127,18 +127,27 @@
       <aside id="class-board" aria-label="教学白板" hidden>
         <header class="board-head">
           <h2>白板</h2>
+          <div class="board-zoom" role="group" aria-label="缩放白板">
+            <button type="button" id="board-zoom-out" aria-label="缩小白板">−</button>
+            <button type="button" id="board-zoom-reset" aria-label="回到白板原点并重置缩放" title="回到原点">100%</button>
+            <button type="button" id="board-zoom-in" aria-label="放大白板">＋</button>
+          </div>
           <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
         </header>
         <div class="board-tools" aria-label="白板工具">
           <button type="button" data-board-tool="pen" aria-pressed="true">笔</button>
           <button type="button" data-board-tool="eraser" aria-pressed="false">橡皮</button>
+          <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
           <input type="color" id="board-color" value="#263a35" aria-label="白板笔颜色">
           <label class="sr-only" for="board-size">白板笔粗细</label>
           <select id="board-size"><option value="3">细</option><option value="5" selected>中</option><option value="10">粗</option></select>
           <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
           <button type="button" id="board-clear" class="quiet" disabled>清空</button>
         </div>
-        <div id="board-surface"><canvas id="board-ink" aria-label="白板画布"></canvas></div>
+        <div id="board-surface">
+          <canvas id="board-ink" aria-label="白板画布"></canvas>
+          <canvas id="board-draft" aria-hidden="true"></canvas>
+        </div>
       </aside>
       <div id="board-divider" role="separator" aria-label="调整白板和讲解师高度" aria-orientation="horizontal" aria-controls="class-board" tabindex="0" aria-valuemin="25" aria-valuemax="65" aria-valuenow="46" hidden></div>
       <section class="chat-pane" aria-labelledby="chat-heading">
