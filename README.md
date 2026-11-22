@@ -4,6 +4,10 @@
 
 HarmonyOS 5.0 及以上的平板可以使用 [鸿蒙应用工程及真机签名说明](harmony/README.md)。
 
+## 特别鸣谢
+
+**特别感谢白咲和「忘砚讲台」。** 这个项目让我们看到，课本和 AI 可以在同一屏里配合。边读一页边讲解，有疑问就当场追问，还能用公式、示意图和白板把推导讲清楚。这套围绕课本展开的学习方式，是讲课台最重要的设计灵感。谢谢白咲把项目和实现思路分享出来！ [忘砚讲台原项目](https://github.com/queyue-jingge/forgotten-inkstone-pub)
+
 ## 华为平板使用
 
 1. 用华为浏览器打开讲课台。横屏后点「导入 PDF」，在系统文件选择器中选择课本。可通过华为浏览器菜单将此页面添加至桌面。
@@ -40,4 +44,4 @@ git tag --list
 
 Android APK 的「语音」使用应用内离线普通话识别。首次使用需要授予麦克风权限，并等待应用解压随包附带的 Vosk 模型。Android 构建脚本会下载并校验固定版本的识别库和模型，缓存于 `.sites-runtime/voice-sdk`。 [Vosk 模型与许可证](https://alphacephei.com/vosk/models)
 
-工作流参考 [忘砚讲台](https://github.com/queyue-jingge/forgotten-inkstone-pub)。内置示例课本为原创，用 [Noto Sans SC](https://github.com/google/fonts/tree/main/ofl/notosanssc) 字体生成。样书和快捷方式图标可以用 `scripts/sample.py` 重新生成，参数为 Noto Sans SC TrueType 字体路径，需要 ReportLab、Pillow 和 FontTools。
+内置示例课本为原创，用 [Noto Sans SC](https://github.com/google/fonts/tree/main/ofl/notosanssc) 字体生成。样书和快捷方式图标可以用 `scripts/sample.py` 重新生成，参数为 Noto Sans SC TrueType 字体路径，需要 ReportLab、Pillow 和 FontTools。
