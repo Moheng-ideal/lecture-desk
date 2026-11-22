@@ -56,7 +56,7 @@ export class Reader {
     this.nearby = new Set();
     this.surfacesByElement = new WeakMap();
     this.pageObserver = new IntersectionObserver((entries) => this.observePages(entries), {
-      root: this.reader, rootMargin: '60% 0px',
+      root: this.reader, rootMargin: '85% 0px',
     });
     this.zoom = 1;
     this.tool = 'read';
@@ -110,14 +110,11 @@ export class Reader {
       }
     });
     this.reader.addEventListener('scroll', () => {
+      if (!this.restoring && this.book) this.queuePositionSave();
       if (this.scrollFrame) return;
       this.scrollFrame = requestAnimationFrame(() => {
         this.scrollFrame = null;
         this.pageAtScroll();
-        if (!this.restoring && this.book) {
-          clearTimeout(this.scrollSave);
-          this.scrollSave = setTimeout(() => this.persist(), 250);
-        }
       });
     }, { passive: true });
     let resize;
@@ -148,7 +145,7 @@ export class Reader {
     if (this.pan) this.endPan();
     if (this.book) {
       clearTimeout(this.scrollSave);
-      this.persist();
+      this.persistPosition();
     }
     const revision = ++this.openRevision;
     this.loading?.destroy().catch(() => {});
@@ -171,8 +168,9 @@ export class Reader {
     };
     try {
       const pdf = await task.promise;
-      const [prior, first] = await Promise.all([
+      const [prior, position, first] = await Promise.all([
         readState(`reader:${book.id}`).catch(() => null),
+        readState(`reader-position:${book.id}`).catch(() => null),
         pdf.getPage(1),
       ]);
       if (revision !== this.openRevision) {
@@ -185,12 +183,14 @@ export class Reader {
       for (const surface of this.surfaces) this.releaseSurface(surface);
       this.nearby.clear();
       this.pdf?.destroy().catch(() => {});
+      this.revision++;
       this.pdf = pdf;
       this.book = book;
       this.pages = prior?.pages || {};
-      this.savedOffset = Number(prior?.offset) || 0;
-      this.zoom = clamp(Number(prior?.zoom) || 1, .75, 2.5);
-      this.page = clamp(prior?.page || 1, 1, pdf.numPages);
+      const view = position || prior;
+      this.savedOffset = Number(view?.offset) || 0;
+      this.zoom = clamp(Number(view?.zoom) || 1, .75, 2.5);
+      this.page = clamp(view?.page || 1, 1, pdf.numPages);
       if (!this.bookHistories.has(book.id)) this.bookHistories.set(book.id, new Map());
       this.history = this.bookHistories.get(book.id);
       const fallback = first.getViewport({ scale: 1 });
@@ -209,10 +209,10 @@ export class Reader {
       this.restoring = true;
       for (const surface of this.surfaces) this.pageObserver.observe(surface.paper);
       const surface = this.currentSurface;
-      this.scrollToPage(surface, prior?.offset);
+      this.scrollToPage(surface, view?.offset);
       this.sync();
       await this.render(surface);
-      if (revision === this.openRevision) this.scrollToPage(surface, prior?.offset);
+      if (revision === this.openRevision) this.scrollToPage(surface, view?.offset);
       return revision === this.openRevision;
     } catch (error) {
       if (revision !== this.openRevision) return false;
@@ -248,7 +248,7 @@ export class Reader {
     if (clear) this.clearSelection();
     this.page = surface.number;
     this.revision++;
-    this.persist();
+    this.queuePositionSave();
     this.sync();
   }
 
@@ -271,6 +271,7 @@ export class Reader {
   }
 
   observePages(entries) {
+    let releasedCurrent = false;
     for (const entry of entries) {
       const surface = this.surfacesByElement.get(entry.target);
       if (!surface || surface.pdf !== this.pdf) continue;
@@ -279,15 +280,19 @@ export class Reader {
         this.render(surface).catch(this.onError);
       } else {
         this.nearby.delete(surface);
-        if (surface === this.currentSurface) this.finishPointer(true);
+        if (surface === this.currentSurface && surface.rendered) {
+          this.finishPointer(true);
+          releasedCurrent = true;
+        }
         this.releaseSurface(surface);
       }
     }
     this.pageAtScroll();
-    this.sync();
+    if (releasedCurrent) this.sync();
   }
 
   releaseSurface(surface) {
+    if (!surface.canvas && !surface.pending) return;
     surface.generation++;
     surface.renderTask?.cancel();
     surface.layerTask?.cancel();
@@ -297,7 +302,7 @@ export class Reader {
     surface.paper.replaceChildren();
     Object.assign(surface, {
       canvas: null, ink: null, textLayer: null, rect: null, textItems: null, textDivs: null,
-      renderTask: null, layerTask: null, pending: null, rendered: false,
+      renderTask: null, layerTask: null, textPending: null, displayViewport: null, pending: null, rendered: false,
     });
   }
 
@@ -341,7 +346,7 @@ export class Reader {
       const [canvas, textLayer, ink, rect] = contents.children;
       surface.paper.setAttribute('aria-label', `第 ${surface.number} 页`);
       surface.paper.replaceChildren(contents);
-      Object.assign(surface, { canvas, textLayer, ink, rect });
+      Object.assign(surface, { canvas, textLayer, ink, rect, displayViewport: viewport });
       contents.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
       const pixels = Math.min(window.devicePixelRatio || 1, 2.3, Math.sqrt(5000000 / (viewport.width * viewport.height)));
       for (const layer of [canvas, ink]) {
@@ -353,15 +358,11 @@ export class Reader {
         viewport,
         transform: [pixels, 0, 0, pixels, 0, 0],
       });
-      const [content] = await Promise.all([page.getTextContent(), surface.renderTask.promise]);
+      await surface.renderTask.promise;
       if (!stillCurrent()) return;
-      surface.layerTask = new TextLayer({ textContentSource: content, container: textLayer, viewport });
-      await surface.layerTask.render();
-      if (!stillCurrent()) return;
-      surface.textItems = content.items.filter((item) => typeof item.str === 'string');
-      surface.textDivs = surface.layerTask.textDivs;
       surface.rendered = true;
       this.paint(surface);
+      if (this.tool === 'native') this.ensureTextLayer(surface).catch(this.onError);
       if (surface === this.currentSurface) {
         this.showStatus('');
         this.sync();
@@ -369,6 +370,35 @@ export class Reader {
     } catch (error) {
       if (stillCurrent() && !['RenderingCancelledException', 'AbortException'].includes(error.name)) throw error;
     }
+  }
+
+  ensureTextLayer(surface) {
+    if (surface.textItems) return Promise.resolve(true);
+    if (surface.textPending) return surface.textPending;
+    const generation = surface.generation;
+    const current = () => surface.generation === generation && surface.pdf === this.pdf;
+    surface.textPending = (async () => {
+      try {
+        const page = await surface.pdf.getPage(surface.number);
+        const content = await page.getTextContent();
+        if (!current()) return false;
+        surface.textLayer.replaceChildren();
+        surface.layerTask = new TextLayer({
+          textContentSource: content, container: surface.textLayer, viewport: surface.displayViewport,
+        });
+        await surface.layerTask.render();
+        if (!current()) return false;
+        surface.textItems = content.items.filter((item) => typeof item.str === 'string');
+        surface.textDivs = surface.layerTask.textDivs;
+        return true;
+      } catch (error) {
+        if (current()) throw error;
+        return false;
+      } finally {
+        if (current()) surface.textPending = null;
+      }
+    })();
+    return surface.textPending;
   }
 
   showStatus(message) {
@@ -393,9 +423,9 @@ export class Reader {
     byId('zoom-out').disabled = !canRead || this.zoom <= .75;
     byId('zoom-in').disabled = !canRead || this.zoom >= 2.5;
     byId('use-selection').disabled = !this.rendered || this.recognizing;
-    const history = this.getHistory();
-    byId('undo').disabled = !history.undo.length;
-    byId('redo').disabled = !history.redo.length;
+    const history = this.history.get(this.page);
+    byId('undo').disabled = !history?.undo.length;
+    byId('redo').disabled = !history?.redo.length;
     this.onChange();
   }
 
@@ -417,7 +447,7 @@ export class Reader {
     if (!this.pdf) return;
     this.zoom = clamp(value, .75, 2.5);
     this.reflow();
-    this.persist();
+    this.persistPosition();
   }
 
   setTool(tool) {
@@ -435,6 +465,11 @@ export class Reader {
     byId('selection-bar').hidden = !selecting;
     byId('native-select').textContent = tool === 'native' ? '返回框选' : '系统选区';
     byId('selection-note').textContent = tool === 'native' ? '长按或拖动选择文字，再点引用选文。' : scanMessage;
+    if (tool === 'native') {
+      for (const page of new Set([this.currentSurface, ...this.nearby])) {
+        if (page?.rendered) this.ensureTextLayer(page).catch(this.onError);
+      }
+    }
     this.inkTools.sync();
   }
 
@@ -468,7 +503,8 @@ export class Reader {
     const stylus = event.pointerType === 'pen' || nativePressure >= 0;
     if (touch && !stylus && !this.fingerInk) {
       if (!this.pan) {
-        this.pan = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp, vx: 0, vy: 0 };
+        this.pan = { id: event.pointerId, x: event.clientX, y: event.clientY,
+          time: event.timeStamp, dx: 0, dy: 0, vx: 0, vy: 0, frame: null };
         this.stack.setPointerCapture(event.pointerId);
         event.preventDefault();
       }
@@ -500,11 +536,20 @@ export class Reader {
       const dx = pan.x - event.clientX;
       const dy = pan.y - event.clientY;
       const interval = Math.max(10, event.timeStamp - pan.time);
-      this.reader.scrollBy(dx, dy);
+      const weight = 1 - Math.exp(-interval / 26);
+      pan.dx += dx;
+      pan.dy += dy;
       Object.assign(pan, {
         x: event.clientX, y: event.clientY, time: event.timeStamp,
-        vx: clamp(dx / interval, -3, 3), vy: clamp(dy / interval, -3, 3),
+        vx: pan.vx + (clamp(dx / interval, -3.5, 3.5) - pan.vx) * weight,
+        vy: pan.vy + (clamp(dy / interval, -3.5, 3.5) - pan.vy) * weight,
       });
+      if (pan.frame === null) {
+        pan.frame = requestAnimationFrame(() => {
+          pan.frame = null;
+          this.flushPan(pan);
+        });
+      }
       return;
     }
     const active = this.pointer;
@@ -548,21 +593,34 @@ export class Reader {
   endPan(coast = false) {
     const pan = this.pan;
     this.pan = null;
+    if (pan.frame !== null) cancelAnimationFrame(pan.frame);
+    this.flushPan(pan);
     if (this.stack.hasPointerCapture(pan.id)) this.stack.releasePointerCapture(pan.id);
     if (!coast || Math.hypot(pan.vx, pan.vy) < .16) return;
     let last = performance.now();
+    let x = this.reader.scrollLeft;
+    let y = this.reader.scrollTop;
+    const maxX = this.reader.scrollWidth - this.reader.clientWidth;
+    const maxY = this.reader.scrollHeight - this.reader.clientHeight;
     const frame = (time) => {
       const interval = clamp(time - last, 0, 32);
       last = time;
-      const friction = Math.exp(-interval / 135);
+      const friction = Math.exp(-interval / 170);
+      x = clamp(x + pan.vx * 170 * (1 - friction), 0, maxX);
+      y = clamp(y + pan.vy * 170 * (1 - friction), 0, maxY);
       pan.vx *= friction;
       pan.vy *= friction;
-      const { scrollTop, scrollLeft } = this.reader;
-      this.reader.scrollBy(pan.vx * interval, pan.vy * interval);
-      this.glide = (this.reader.scrollTop !== scrollTop || this.reader.scrollLeft !== scrollLeft) &&
-        Math.hypot(pan.vx, pan.vy) > .05 ? requestAnimationFrame(frame) : null;
+      if ((x === 0 && pan.vx < 0) || (x === maxX && pan.vx > 0)) pan.vx = 0;
+      if ((y === 0 && pan.vy < 0) || (y === maxY && pan.vy > 0)) pan.vy = 0;
+      this.reader.scrollTo(x, y);
+      this.glide = Math.hypot(pan.vx, pan.vy) > .04 ? requestAnimationFrame(frame) : null;
     };
     this.glide = requestAnimationFrame(frame);
+  }
+
+  flushPan(pan) {
+    if (pan.dx || pan.dy) this.reader.scrollBy(pan.dx, pan.dy);
+    pan.dx = pan.dy = 0;
   }
 
   stopGlide() {
@@ -684,13 +742,27 @@ export class Reader {
     ctx.restore();
   }
 
-  persist() {
+  readingPosition() {
     const anchor = this.currentSurface?.paper;
     const padding = parseFloat(getComputedStyle(this.reader).paddingTop);
     const offset = anchor?.offsetHeight
       ? (this.reader.scrollTop + padding - anchor.offsetTop) / anchor.offsetHeight : this.savedOffset || 0;
     this.savedOffset = offset;
-    saveState(`reader:${this.book.id}`, { page: this.page, offset, zoom: this.zoom, pages: { ...this.pages } })
+    return { page: this.page, offset, zoom: this.zoom };
+  }
+
+  queuePositionSave() {
+    clearTimeout(this.scrollSave);
+    this.scrollSave = setTimeout(() => this.persistPosition(), 320);
+  }
+
+  persistPosition() {
+    if (this.book) saveState(`reader-position:${this.book.id}`, this.readingPosition()).catch(() => {});
+  }
+
+  persist() {
+    this.persistPosition();
+    saveState(`reader:${this.book.id}`, { page: this.page, offset: this.savedOffset, zoom: this.zoom, pages: { ...this.pages } })
       .catch(() => this.notify('本机存储写入失败，本次批注可能无法保留。'));
   }
 
@@ -700,6 +772,10 @@ export class Reader {
 
   async quotePage() {
     if (!this.rendered) throw new Error('请等课本页面显示后再引用。');
+    const revision = this.revision;
+    if (!await this.ensureTextLayer(this.currentSurface) || revision !== this.revision) {
+      throw new Error('课本页面已改变，请重新引用。');
+    }
     const text = joinText(this.textItems);
     return text ? this.getReference(text, '整页') : this.runOcr({ x: 0, y: 0, w: 1, h: 1 });
   }
@@ -716,9 +792,14 @@ export class Reader {
       this.clearSelection();
       return;
     }
-    if (!this.bounds || this.bounds.w * this.ink.clientWidth < 5 || this.bounds.h * this.ink.clientHeight < 5) {
+    if (!this.bounds || !this.ink || this.bounds.w * this.ink.clientWidth < 5 || this.bounds.h * this.ink.clientHeight < 5) {
       this.notify('请在课本上拖动框选一段文字。');
       return;
+    }
+    const revision = this.revision;
+    const bounds = this.bounds;
+    if (!await this.ensureTextLayer(this.currentSurface) || revision !== this.revision || this.bounds !== bounds) {
+      throw new Error('课本选区已改变，请重新引用。');
     }
     const box = this.rect.getBoundingClientRect();
     const text = joinText(this.textItems
