@@ -156,18 +156,20 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .selection-bar { min-height: 48px; }
 .selection-bar span { font-size: .8rem; color: var(--muted); flex: 1; min-width: 100px; }
 .selection-bar button { min-height: 36px; }
-.reader { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; touch-action: none; padding: 10px clamp(12px, 2vw, 28px); background: var(--desk); scrollbar-color: var(--muted) transparent; }
+.reader { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; scrollbar-gutter: stable; touch-action: pan-x pan-y; padding: 10px clamp(12px, 2vw, 28px); background: var(--desk); scrollbar-color: var(--muted) transparent; }
+.reader[data-pinching] { overflow: hidden; }
 #page-stage { min-width: max-content; }
 #page-stack { display: grid; justify-items: center; gap: 12px; min-width: max-content; }
 #page-stage[data-pinching] { position: relative; overflow: clip; }
 #page-stage[data-pinching] #page-stack { position: absolute; inset: 0 auto auto 0; transform-origin: top left; will-change: transform; }
-.page-slot { background: white; box-shadow: 0 1px 3px #2e2a2226, 0 6px 20px #332b1a0e; }
-.paper { position: relative; width: 100%; height: 100%; }
+.page-slot { contain: layout paint; background: white; box-shadow: 0 1px 3px #2e2a2226, 0 6px 20px #332b1a0e; }
+.paper { position: relative; width: 100%; height: 100%; pointer-events: none; }
 .paper canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
 .paper .textLayer { pointer-events: none; z-index: 1; }
 .paper .ink-canvas { pointer-events: none; z-index: 2; }
 .paper .ink-preview { pointer-events: none; z-index: 3; }
 .reader:is([data-tool="pen"], [data-tool="marker"], [data-tool="eraser"], [data-tool="select"]) .ink-canvas { pointer-events: auto; cursor: crosshair; }
+.reader[data-finger-ink="true"] .ink-canvas { touch-action: none; }
 .reader[data-tool="native"] .textLayer { pointer-events: auto; }
 .selection-rect { position: absolute; z-index: 3; border: 1px solid #3b614b; background: #6090712b; pointer-events: none; }
 .reader-status { position: sticky; z-index: 4; bottom: 12px; width: fit-content; margin-inline: auto; border-radius: 10px; background: var(--paper); color: var(--muted); padding: 10px 14px; text-align: center; }

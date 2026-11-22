@@ -11,7 +11,6 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const scanMessage = '框选课本文字，扫描版可直接识字。';
 const zoomMin = .75;
 const zoomMax = 2.5;
-const panFriction = 230;
 
 function midpoint([a, b]) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
@@ -60,12 +59,12 @@ export class Reader {
     this.reader = byId('reader');
     this.stage = byId('page-stage');
     this.stack = byId('page-stack');
-    this.touches = new Map();
     this.surfaces = [];
     this.nearby = new Set();
+    this.renderQueue = new Map();
     this.surfacesByElement = new WeakMap();
     this.pageObserver = new IntersectionObserver((entries) => this.observePages(entries), {
-      root: this.reader, rootMargin: '85% 0px',
+      root: this.reader, rootMargin: '115% 0px',
     });
     this.zoom = 1;
     this.tool = 'read';
@@ -109,7 +108,10 @@ export class Reader {
     this.reader.addEventListener('pointerup', (event) => this.pointerEnd(event));
     this.reader.addEventListener('pointercancel', (event) => this.pointerEnd(event, true));
     this.reader.addEventListener('lostpointercapture', (event) => this.pointerEnd(event, true));
-    this.reader.addEventListener('wheel', () => this.stopGlide(), { passive: true });
+    this.reader.addEventListener('touchstart', (event) => this.touchStart(event), { passive: false });
+    this.reader.addEventListener('touchmove', (event) => this.touchMove(event), { passive: true });
+    this.reader.addEventListener('touchend', (event) => this.touchEnd(event), { passive: true });
+    this.reader.addEventListener('touchcancel', (event) => this.touchEnd(event), { passive: true });
     document.addEventListener('selectionchange', () => {
       if (this.tool !== 'native') return;
       const selection = window.getSelection();
@@ -122,11 +124,11 @@ export class Reader {
     this.reader.addEventListener('scroll', () => {
       if (this.pinch || this.restoring || !this.book) return;
       this.queuePositionSave();
-      if (this.scrollFrame) return;
-      this.scrollFrame = requestAnimationFrame(() => {
-        this.scrollFrame = null;
+      if (this.scrollUpdate) return;
+      this.scrollUpdate = setTimeout(() => {
+        this.scrollUpdate = null;
         this.pageAtScroll();
-      });
+      }, 70);
     }, { passive: true });
     let resize;
     new ResizeObserver(() => {
@@ -152,8 +154,6 @@ export class Reader {
   set fingerInk(value) { this.reader.dataset.fingerInk = String(Boolean(value)); }
 
   async open(book) {
-    this.stopGlide();
-    if (this.pan) this.endPan();
     if (this.pinch) this.endPinch();
     if (this.book) {
       clearTimeout(this.scrollSave);
@@ -224,7 +224,7 @@ export class Reader {
       this.scrollToPage(surface, view?.offset);
       this.reader.scrollLeft = Number(view?.left) || 0;
       this.sync();
-      await this.render(surface);
+      await this.render(surface, true);
       if (revision === this.openRevision) this.scrollToPage(surface, view?.offset);
       return revision === this.openRevision;
     } catch (error) {
@@ -310,8 +310,7 @@ export class Reader {
 
   releaseSurface(surface) {
     if (!surface.canvas && !surface.pending) return;
-    surface.generation++;
-    surface.renderTask?.cancel();
+    this.cancelRender(surface);
     surface.layerTask?.cancel();
     for (const canvas of [surface.canvas, surface.ink, surface.overlay]) {
       if (canvas) canvas.width = canvas.height = 0;
@@ -322,6 +321,16 @@ export class Reader {
       renderTask: null, layerTask: null, textPending: null, displayViewport: null, pending: null,
       rendered: false, needsRefresh: false,
     });
+  }
+
+  cancelRender(surface) {
+    surface.generation++;
+    surface.renderTask?.cancel();
+    const queued = this.renderQueue.get(surface);
+    if (queued) {
+      this.renderQueue.delete(surface);
+      queued.resolve();
+    }
   }
 
   captureAnchor(x, y) {
@@ -355,8 +364,7 @@ export class Reader {
     for (const surface of new Set([anchor.target, this.currentSurface, ...this.nearby])) {
       if (surface.rendered) {
         // Leave the current bitmap and ink visible while a sharper page is prepared.
-        surface.generation++;
-        surface.renderTask?.cancel();
+        this.cancelRender(surface);
         surface.layerTask?.cancel();
         surface.textLayer.replaceChildren();
         Object.assign(surface, { renderTask: null, layerTask: null, pending: null, textPending: null,
@@ -368,15 +376,48 @@ export class Reader {
     this.sync();
   }
 
-  render(surface) {
+  render(surface, urgent = false) {
     if (surface.rendered && !surface.needsRefresh) return Promise.resolve();
-    if (!surface.pending) {
-      const generation = ++surface.generation;
-      surface.pending = this.drawSurface(surface, generation).finally(() => {
-        if (surface.generation === generation) surface.pending = null;
-      });
+    if (surface.pending) {
+      const queued = this.renderQueue.get(surface);
+      if (urgent && queued) queued.urgent = true;
+      return surface.pending;
     }
+    const generation = ++surface.generation;
+    const promise = new Promise((resolve, reject) => {
+      this.renderQueue.set(surface, { generation, urgent, resolve, reject });
+    });
+    surface.pending = promise.finally(() => {
+      if (surface.generation === generation) surface.pending = null;
+    });
+    this.scheduleRender();
     return surface.pending;
+  }
+
+  scheduleRender() {
+    if (this.renderFrame || this.rendering || this.pinch || !this.renderQueue.size) return;
+    this.renderFrame = requestAnimationFrame(() => {
+      this.renderFrame = null;
+      if (this.pinch || !this.renderQueue.size) return;
+      const { top, bottom } = this.reader.getBoundingClientRect();
+      let next;
+      let nearest = Infinity;
+      for (const [surface, job] of this.renderQueue) {
+        const box = surface.paper.getBoundingClientRect();
+        const priority = job.urgent ? -1 : Math.max(box.top - bottom, top - box.bottom, 0);
+        if (priority < nearest) {
+          next = surface;
+          nearest = priority;
+        }
+      }
+      const job = this.renderQueue.get(next);
+      this.renderQueue.delete(next);
+      this.rendering = true;
+      this.drawSurface(next, job.generation).then(job.resolve, job.reject).finally(() => {
+        this.rendering = false;
+        this.scheduleRender();
+      });
+    });
   }
 
   async drawSurface(surface, generation) {
@@ -402,7 +443,6 @@ export class Reader {
         viewport,
         transform: [pixels, 0, 0, pixels, 0, 0],
       });
-      surface.renderTask.onContinue = (resume) => requestAnimationFrame(resume);
       await surface.renderTask.promise;
       if (!stillCurrent()) return;
       if (refresh) {
@@ -412,8 +452,6 @@ export class Reader {
         surface.canvas = canvas;
       }
       surface.paper.firstElementChild.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
-      surface.ink.width = canvas.width;
-      surface.ink.height = canvas.height;
       surface.displayViewport = viewport;
       surface.rendered = true;
       surface.needsRefresh = false;
@@ -429,7 +467,7 @@ export class Reader {
   }
 
   ensureTextLayer(surface) {
-    if (surface.needsRefresh) return this.render(surface).then(() =>
+    if (surface.needsRefresh) return this.render(surface, true).then(() =>
       surface.rendered && !surface.needsRefresh ? this.ensureTextLayer(surface) : false);
     if (surface.textItems) return Promise.resolve(true);
     if (surface.textPending) return surface.textPending;
@@ -489,8 +527,6 @@ export class Reader {
 
   async setPage(number) {
     if (!this.pdf) return;
-    this.stopGlide();
-    if (this.pan) this.endPan();
     if (this.pinch) this.endPinch();
     const target = clamp(Math.trunc(number) || this.page, 1, this.pdf.numPages);
     if (target === this.page) {
@@ -501,13 +537,11 @@ export class Reader {
     const surface = this.surfaces[target - 1];
     this.selectPage(surface);
     this.scrollToPage(surface);
-    await this.render(surface);
+    await this.render(surface, true);
   }
 
   setZoom(value) {
     if (!this.pdf) return;
-    this.stopGlide();
-    if (this.pan) this.endPan();
     if (this.pinch) this.endPinch();
     const zoom = clamp(value, zoomMin, zoomMax);
     if (zoom === this.zoom) return;
@@ -517,8 +551,6 @@ export class Reader {
   }
 
   setTool(tool) {
-    this.stopGlide();
-    if (this.pan) this.endPan();
     if (this.pinch) this.endPinch();
     this.finishPointer(true);
     this.tool = tool;
@@ -557,30 +589,16 @@ export class Reader {
   }
 
   pointerDown(event) {
-    if (!this.pdf || event.button !== 0) return;
-    this.stopGlide();
+    if (!this.pdf || this.pointer || this.pinch || this.pinchTail || event.button !== 0) return;
     const canvas = event.target.closest('.ink-canvas');
+    if (!canvas) return;
     const touch = event.pointerType === 'touch' || !event.pointerType;
     let nativePressure = -1;
-    if (touch && canvas && this.touches.size === 0) {
+    if (touch && event.isPrimary) {
       try { nativePressure = window.LectureDeskNative?.penAtContact?.() ?? -1; } catch { /* Browser fallback. */ }
     }
     const stylus = event.pointerType === 'pen' || nativePressure >= 0;
-    if (touch && !stylus && !this.pointer?.stylus) {
-      this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (this.touches.size === 2 && !this.pinchTail) this.startPinch();
-      if (this.pinch || this.pinchTail) {
-        event.preventDefault();
-        return;
-      }
-      if (!canvas || !this.fingerInk) {
-        this.pan = { id: event.pointerId, x: event.clientX, y: event.clientY, started: false,
-          time: event.timeStamp, left: this.reader.scrollLeft, top: this.reader.scrollTop, vx: 0, vy: 0, frame: null };
-        return;
-      }
-    }
-    if (this.pointer || this.pinch || this.pinchTail || !canvas) return;
-    if (this.pan) this.endPan();
+    if (touch && !stylus && !this.fingerInk) return;
     const surface = this.surfacesByElement.get(canvas.closest('.page-slot'));
     if (!surface?.rendered) return;
     this.selectPage(surface);
@@ -602,40 +620,6 @@ export class Reader {
   }
 
   pointerMove(event) {
-    if (this.touches.has(event.pointerId)) {
-      this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (this.pinch) {
-        this.pinch.focus = midpoint(this.pinch.ids.map((id) => this.touches.get(id)));
-        if (this.pinch.frame === null) this.pinch.frame = requestAnimationFrame(() => this.previewPinch());
-        return;
-      }
-    }
-    const pan = this.pan;
-    if (pan?.id === event.pointerId) {
-      const dx = pan.x - event.clientX;
-      const dy = pan.y - event.clientY;
-      if (!pan.started) {
-        if (Math.hypot(dx, dy) < 5 || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
-        pan.started = true;
-        this.reader.setPointerCapture(event.pointerId);
-      }
-      const interval = Math.max(6, event.timeStamp - pan.time);
-      const weight = 1 - Math.exp(-interval / 32);
-      pan.left = clamp(pan.left + dx, 0, this.reader.scrollWidth - this.reader.clientWidth);
-      pan.top = clamp(pan.top + dy, 0, this.reader.scrollHeight - this.reader.clientHeight);
-      Object.assign(pan, {
-        x: event.clientX, y: event.clientY, time: event.timeStamp,
-        vx: pan.vx + (clamp(dx / interval, -4.5, 4.5) - pan.vx) * weight,
-        vy: pan.vy + (clamp(dy / interval, -4.5, 4.5) - pan.vy) * weight,
-      });
-      if (pan.frame === null) {
-        pan.frame = requestAnimationFrame(() => {
-          pan.frame = null;
-          this.reader.scrollTo(pan.left, pan.top);
-        });
-      }
-      return;
-    }
     const active = this.pointer;
     if (active?.id !== event.pointerId) return;
     const point = (sample) => this.point(sample, active.box, active.stylus, active.last.pressure);
@@ -653,15 +637,7 @@ export class Reader {
   }
 
   pointerEnd(event, cancelled = false) {
-    // A touch may move its implicit capture from the canvas to the reader when pinching.
-    if (event.type === 'lostpointercapture' && event.target !== this.pointer?.canvas && event.target !== this.reader) return;
-    if (this.pinch?.ids.includes(event.pointerId)) this.endPinch();
-    this.touches.delete(event.pointerId);
-    if (!this.touches.size) this.pinchTail = false;
-    if (this.pan?.id === event.pointerId) {
-      this.endPan(!cancelled && event.timeStamp - this.pan.time < 85);
-      return;
-    }
+    if (event.type === 'lostpointercapture' && event.target !== this.pointer?.canvas) return;
     if (this.pointer?.id !== event.pointerId) return;
     const active = this.pointer;
     const p = this.point(event, active.box, active.stylus, active.last.pressure);
@@ -677,13 +653,47 @@ export class Reader {
     this.finishPointer(cancelled);
   }
 
-  startPinch() {
-    if (this.pan) this.endPan(false, true);
+  touchStart(event) {
+    if (!this.pdf) return;
+    if (this.pointer?.stylus || this.pinch || this.pinchTail) {
+      if (event.cancelable) event.preventDefault();
+      return;
+    }
+    if (event.touches.length < 2) return;
+    const touches = Array.from(event.touches).filter((touch) =>
+      this.reader.contains(touch.target) && touch.touchType !== 'stylus');
+    if (touches.length < 2) return;
+    if (event.cancelable) event.preventDefault();
+    this.startPinch(touches.slice(0, 2));
+  }
+
+  touchMove(event) {
+    const pinch = this.pinch;
+    if (!pinch) return;
+    const touches = Array.from(event.touches).filter((touch) => pinch.ids.includes(touch.identifier));
+    if (touches.length !== 2) return;
+    pinch.focus = midpoint(touches.map(({ clientX: x, clientY: y }) => ({ x, y })));
+    if (pinch.frame === null) pinch.frame = requestAnimationFrame(() => this.previewPinch());
+  }
+
+  touchEnd(event) {
+    if (this.pinch && Array.from(event.changedTouches).some((touch) => this.pinch.ids.includes(touch.identifier))) {
+      this.endPinch();
+    }
+    if (this.pinchTail && !Array.from(event.touches).some((touch) => this.reader.contains(touch.target))) {
+      this.pinchTail = false;
+      requestAnimationFrame(() => {
+        if (!this.pinch && !this.pinchTail) delete this.reader.dataset.pinching;
+      });
+    }
+  }
+
+  startPinch(touches) {
     this.finishPointer(true);
     this.clearSelection();
     clearTimeout(this.scrollSave);
-    const ids = [...this.touches.keys()];
-    const focus = midpoint(this.touches.values());
+    const ids = touches.map((touch) => touch.identifier);
+    const focus = midpoint(touches.map(({ clientX: x, clientY: y }) => ({ x, y })));
     const stack = this.stack.getBoundingClientRect();
     const reader = this.reader.getBoundingClientRect();
     const stage = this.stage.getBoundingClientRect();
@@ -701,7 +711,8 @@ export class Reader {
     }
     this.stack.style.width = `${stack.width}px`;
     this.stage.dataset.pinching = '';
-    for (const id of ids) this.reader.setPointerCapture(id);
+    // Stop a native drag that started before the second finger reached the reader.
+    this.reader.dataset.pinching = '';
     this.previewPinch();
   }
 
@@ -739,40 +750,8 @@ export class Reader {
     }
     this.zoom = pinch.zoom;
     this.reflow(pinch.anchor, pinch.focus);
+    this.scheduleRender();
     this.persistPosition();
-  }
-
-  endPan(coast = false, keepCapture = false) {
-    const pan = this.pan;
-    this.pan = null;
-    if (pan.frame !== null) cancelAnimationFrame(pan.frame);
-    if (pan.started) this.reader.scrollTo(pan.left, pan.top);
-    if (!keepCapture && this.reader.hasPointerCapture(pan.id)) this.reader.releasePointerCapture(pan.id);
-    if (!coast || Math.hypot(pan.vx, pan.vy) < .16) return;
-    let last = performance.now();
-    let x = this.reader.scrollLeft;
-    let y = this.reader.scrollTop;
-    const maxX = this.reader.scrollWidth - this.reader.clientWidth;
-    const maxY = this.reader.scrollHeight - this.reader.clientHeight;
-    const frame = (time) => {
-      const interval = clamp(time - last, 0, 55);
-      last = time;
-      const friction = Math.exp(-interval / panFriction);
-      x = clamp(x + pan.vx * panFriction * (1 - friction), 0, maxX);
-      y = clamp(y + pan.vy * panFriction * (1 - friction), 0, maxY);
-      pan.vx *= friction;
-      pan.vy *= friction;
-      if ((x === 0 && pan.vx < 0) || (x === maxX && pan.vx > 0)) pan.vx = 0;
-      if ((y === 0 && pan.vy < 0) || (y === maxY && pan.vy > 0)) pan.vy = 0;
-      this.reader.scrollTo(x, y);
-      this.glide = Math.hypot(pan.vx, pan.vy) > .04 ? requestAnimationFrame(frame) : null;
-    };
-    this.glide = requestAnimationFrame(frame);
-  }
-
-  stopGlide() {
-    if (this.glide) cancelAnimationFrame(this.glide);
-    this.glide = null;
   }
 
   finishPointer(cancelled) {
@@ -868,7 +847,15 @@ export class Reader {
 
   paint(surface = this.currentSurface) {
     if (!surface?.ink) return;
-    paintStrokes(surface.ink, this.pages[surface.number] || EMPTY, this.zoom);
+    const { canvas, ink } = surface;
+    const strokes = this.pages[surface.number] || EMPTY;
+    const width = strokes.length ? canvas.width : 1;
+    const height = strokes.length ? canvas.height : 1;
+    if (ink.width !== width || ink.height !== height) {
+      ink.width = width;
+      ink.height = height;
+    }
+    if (strokes.length) paintStrokes(ink, strokes, this.zoom);
     if (surface === this.currentSurface) this.paintPreview();
   }
 
@@ -890,9 +877,9 @@ export class Reader {
       if (canvas.width) canvas.width = canvas.height = 0;
       return;
     }
-    if (canvas.width !== surface.ink.width || canvas.height !== surface.ink.height) {
-      canvas.width = surface.ink.width;
-      canvas.height = surface.ink.height;
+    if (canvas.width !== surface.canvas.width || canvas.height !== surface.canvas.height) {
+      canvas.width = surface.canvas.width;
+      canvas.height = surface.canvas.height;
     }
     if (this.draft) {
       const preview = { ...this.draft, points: [...this.draft.points, active.last] };
