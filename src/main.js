@@ -49,7 +49,6 @@ function status(id, message = '') {
 }
 
 function showPanel(panel) {
-  if (panel === 'chat') setBookFullscreen(false);
   $('workspace').dataset.panel = panel;
   for (const target of document.querySelectorAll('.mobile-tabs button')) {
     target.setAttribute('aria-pressed', String(target.dataset.panel === panel));
@@ -61,10 +60,11 @@ function setBookFullscreen(enabled) {
   const workspace = $('workspace');
   if (workspace.hasAttribute('data-book-fullscreen') === enabled) return;
   workspace.toggleAttribute('data-book-fullscreen', enabled);
+  const tools = enabled ? $('pdf-tools') : $('book-title').closest('.book-bar');
+  tools.append($('book-actions'));
   button.setAttribute('aria-pressed', String(enabled));
   button.textContent = enabled ? '退出全屏' : '全屏';
-  button.title = enabled ? '恢复课本和讲解师分屏' : '让课本占满工作区';
-  if (enabled) showPanel('book');
+  button.title = enabled ? '恢复左侧书名和标签栏' : '展开左侧课本';
 }
 
 function displayExcerpts() {
@@ -545,7 +545,6 @@ for (const target of document.querySelectorAll('.mobile-tabs button')) target.on
 for (const target of document.querySelectorAll('[data-close]')) target.onclick = () => target.closest('dialog').close();
 $('pdf-open').onclick = () => $('pdf-file').click();
 $('book-fullscreen').onclick = () => setBookFullscreen(!$('workspace').hasAttribute('data-book-fullscreen'));
-$('board-open').addEventListener('click', () => setBookFullscreen(false));
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !document.querySelector('dialog[open]')) setBookFullscreen(false);
 });

@@ -27,7 +27,7 @@
     <section class="book-pane" aria-label="课本区">
       <div class="book-bar">
         <div class="file-info"><span class="file-mark" aria-hidden="true">PDF</span><div><strong id="book-title">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
-        <div class="book-actions">
+        <div id="book-actions" class="book-actions">
           <button type="button" id="pdf-export" class="quiet" disabled>保存 PDF</button>
           <button type="button" id="library-open" class="quiet">书架</button>
           <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入 PDF</button>
@@ -40,7 +40,7 @@
       </div>
 
       <div class="reader-tools">
-        <div class="tools" aria-label="课本工具栏">
+        <div id="pdf-tools" class="tools" aria-label="课本工具栏">
           <div class="tool-group" id="modes" aria-label="批注和选取">
             <button type="button" data-tool="read" aria-pressed="true" title="阅读和滚动">阅读</button>
             <button type="button" data-tool="select" aria-pressed="false" title="拖动框选文字，或用浏览器选中文字">选文</button>
@@ -54,7 +54,7 @@
             <button type="button" id="redo" title="重做批注" aria-label="重做批注" disabled>↷</button>
           </div>
         </div>
-        <button type="button" id="book-fullscreen" aria-pressed="false" class="quiet" title="让课本占满工作区">全屏</button>
+        <button type="button" id="book-fullscreen" aria-pressed="false" class="quiet" title="展开左侧课本">全屏</button>
         <section id="ink-panel" class="ink-panel" aria-label="批注工具设置" hidden>
           <header><strong id="ink-heading">笔刷</strong><button type="button" id="ink-close" aria-label="关闭批注工具设置">×</button></header>
           <canvas id="ink-preview" width="520" height="106" aria-label="笔触预览"></canvas>

@@ -51,7 +51,6 @@ export class Reader {
     this.onChange = change;
     this.onError = error;
     this.reader = byId('reader');
-    this.workspace = byId('workspace');
     this.stack = byId('page-stack');
     this.surfaces = [];
     this.nearby = new Set();
@@ -233,8 +232,7 @@ export class Reader {
 
   sizeSurface(surface) {
     const { width, height } = surface.viewport;
-    const fit = this.lastWidth / width;
-    const scale = (this.workspace.hasAttribute('data-book-fullscreen') ? fit : Math.min(1.55, fit)) * this.zoom;
+    const scale = Math.min(1.55, this.lastWidth / width) * this.zoom;
     surface.paper.style.width = `${width * scale}px`;
     surface.paper.style.height = `${height * scale}px`;
     return scale;
