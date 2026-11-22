@@ -2,11 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.lecturedesk.android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <queries>
-        <intent><action android:name="android.speech.RecognitionService" /></intent>
-    </queries>
     <application android:label="讲课台" android:icon="@drawable/app_icon"
-        android:allowBackup="false" android:usesCleartextTraffic="false"
+        android:allowBackup="false" android:usesCleartextTraffic="false" android:extractNativeLibs="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"

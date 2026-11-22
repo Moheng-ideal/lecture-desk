@@ -142,6 +142,11 @@ public final class MainActivity extends Activity {
             });
     }
 
+    @Override protected void onStop() {
+        speech.stopCapture();
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
         destroyed = true;
         selectedBook(null);
