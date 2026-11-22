@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f9f7f2">
+  <meta name="description" content="在平板上批注课本、向 DeepSeek 提问并整理问答录。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <link rel="icon" href="/icon-192.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <title>讲课台</title>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand"><span aria-hidden="true" class="brand-mark">讲</span><h1>讲课台</h1></div>
+    <nav class="mobile-tabs" aria-label="切换面板">
+      <button type="button" data-panel="book" aria-pressed="true">课本</button>
+      <button type="button" data-panel="chat" aria-pressed="false">问答</button>
+    </nav>
+    <div class="header-actions">
+      <button type="button" id="settings-open" class="quiet"><span aria-hidden="true">⚙</span> 设置</button>
+      <button type="button" id="records-open" class="accent">问答录 <span id="record-count">0</span></button>
+    </div>
+  </header>
+  <main id="workspace" data-panel="book">
+    <section class="book-pane" aria-label="课本区">
+      <div class="book-bar">
+        <div class="file-info"><span class="file-mark" aria-hidden="true">PDF</span><div><strong id="book-title">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
+        <div class="book-actions">
+          <button type="button" id="library-open" class="quiet">书架</button>
+          <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入 PDF</button>
+          <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
+        </div>
+      </div>
+
+      <div class="tools" aria-label="课本工具栏">
+        <div class="tool-group" id="modes" aria-label="批注和选取">
+          <button type="button" data-tool="read" aria-pressed="true" title="阅读和滚动">阅读</button>
+          <button type="button" data-tool="select" aria-pressed="false" title="拖动框选文字，或用浏览器选中文字">选文</button>
+          <button type="button" data-tool="pen" aria-pressed="false" title="圆珠笔">批注笔</button>
+          <button type="button" data-tool="marker" aria-pressed="false" title="荧光笔">荧光笔</button>
+          <button type="button" data-tool="eraser" aria-pressed="false" title="按笔画擦除">橡皮</button>
+        </div>
+        <div class="tool-group ink-tools" aria-label="颜色与笔宽">
+          <label class="color-control" title="笔的颜色"><span class="sr-only">笔的颜色</span><input id="ink-color" type="color" value="#ba472d"></label>
+          <label title="笔的宽度"><span class="sr-only">笔的宽度</span><select id="ink-size"><option value="2">细</option><option value="4" selected>中</option><option value="8">粗</option></select></label>
+        </div>
+        <div class="tool-group history-tools">
+          <button type="button" id="undo" title="撤销批注" aria-label="撤销批注" disabled>↶</button>
+          <button type="button" id="redo" title="重做批注" aria-label="重做批注" disabled>↷</button>
+        </div>
+      </div>
+
+      <div class="selection-bar" id="selection-bar" hidden>
+        <span id="selection-note">框选课本文字，扫描版可直接识字。</span>
+        <button type="button" id="native-select" class="quiet" title="使用系统文字选区">系统选区</button>
+        <button type="button" id="use-selection" class="accent">引用选文</button>
+      </div>
+
+      <div class="reader" id="reader" tabindex="0" aria-label="PDF 页面">
+        <div id="page-wrap" class="paper" data-tool="read">
+          <canvas id="pdf-canvas" aria-label="课本页面"></canvas>
+          <div id="text-layer" class="textLayer" aria-label="PDF 文字"></div>
+          <canvas id="ink-canvas" aria-label="手写批注"></canvas>
+          <div id="selection-rect" hidden></div>
+        </div>
+        <p id="reader-status" class="reader-status" role="status">正在打开课本…</p>
+      </div>
+
+      <footer class="reader-footer">
+        <div class="paging">
+          <button id="prev" type="button" aria-label="上一页" title="上一页">‹</button>
+          <label><span class="sr-only">当前页</span><input id="page-number" type="number" min="1" value="1" inputmode="numeric"></label>
+          <span id="page-total">/ —</span>
+          <button id="next" type="button" aria-label="下一页" title="下一页">›</button>
+        </div>
+        <button id="page-quote" type="button" class="quiet">引用整页</button>
+        <div class="zoom" aria-label="缩放">
+          <button id="zoom-out" type="button" aria-label="缩小" title="缩小">−</button>
+          <button id="zoom-reset" type="button" title="适应宽度">100%</button>
+          <button id="zoom-in" type="button" aria-label="放大" title="放大">＋</button>
+        </div>
+      </footer>
+    </section>
+    <section class="chat-pane" aria-label="询问区">
+      <header class="chat-bar">
+        <div class="assistant-mark" aria-hidden="true">✦</div>
+        <div><h2>讲解助手</h2><p id="connection-state">DeepSeek · 检查连接</p></div>
+        <button type="button" id="teach-page" class="outline">讲解本页</button>
+      </header>
+      <div id="chat-scroll" class="chat-scroll" tabindex="0">
+        <div id="welcome">
+          <div class="welcome-mark" aria-hidden="true">✦</div>
+          <h3>今天想讲哪一页？</h3>
+          <p>在课本里选一段文字，有针对性地提问。也可以请助手从当前页开始，逐页讲解。</p>
+          <div class="suggestions">
+            <button type="button" data-suggest="请结合这一页，讲解核心概念和它在例题中的用法。">讲解核心概念</button>
+            <button type="button" data-suggest="请根据这一页出一道检查理解的小题，先不要给答案。">出一道随堂题</button>
+          </div>
+        </div>
+        <ol id="messages" aria-label="问答对话"></ol>
+      </div>
+      <form id="ask" class="composer">
+        <div id="excerpts" aria-label="本次引用"></div>
+        <label class="sr-only" for="question">向讲解助手提问</label>
+        <textarea id="question" rows="2" maxlength="6000" placeholder="输入你的问题，或先从左侧引用课本…"></textarea>
+        <p id="chat-status" role="status" hidden></p>
+        <div class="composer-actions">
+          <button type="button" id="teach-next" class="quiet">下一页开讲</button>
+          <button type="button" id="stop" class="outline" hidden>停止</button>
+          <button type="submit" id="send" class="accent">发送</button>
+        </div>
+      </form>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <dialog id="library">
+    <header><h2>书架</h2><button type="button" data-close aria-label="关闭">×</button></header>
+    <div id="book-list" class="dialog-body"></div>
+    <footer><button type="button" id="library-import" class="accent">导入 PDF</button></footer>
+  </dialog>
+
+  <dialog id="settings">
+    <header><h2>连接设置</h2><button type="button" data-close aria-label="关闭">×</button></header>
+    <form id="settings-form" autocomplete="off">
+      <div class="dialog-body settings-fields">
+        <p id="configuration-hint"></p>
+        <label id="pass-label" hidden>局域网访问口令<input id="access-code" type="password" maxlength="180" autocomplete="off"></label>
+        <fieldset id="credential-fields">
+          <legend>本次会话凭据</legend>
+          <label>DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
+          <details>
+            <summary>飞书云文档</summary>
+            <label>飞书 App ID<input id="feishu-id" maxlength="100" placeholder="cli_…"></label>
+            <label>飞书 App Secret<input id="feishu-secret" type="password" maxlength="180" autocomplete="off"></label>
+            <label>目标飞书文件夹链接<input id="feishu-folder" type="url" maxlength="400" placeholder="https://你的租户.feishu.cn/drive/folder/…"></label>
+          </details>
+        </fieldset>
+        <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（关闭时，手指滚动，触控笔写字）</label>
+      </div>
+      <footer><button type="submit" class="accent">应用设置</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="records">
+    <header><h2>问答录</h2><button type="button" data-close aria-label="关闭">×</button></header>
+    <div class="dialog-body">
+      <label>文档标题<input type="text" id="record-title" maxlength="120"></label>
+      <ol id="record-list"></ol>
+      <p id="export-status" role="status" hidden></p>
+      <a id="feishu-link" target="_blank" rel="noopener noreferrer" hidden>打开飞书云文档</a>
+    </div>
+    <footer>
+      <button type="button" id="export-docx" class="outline">下载 Word</button>
+      <button type="button" id="export-feishu" class="accent">保存到飞书</button>
+    </footer>
+  </dialog>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
