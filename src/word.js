@@ -1,5 +1,6 @@
 import { AlignmentType, Document, HeadingLevel, Packer, PageNumber, Paragraph, TextRun, Footer } from 'docx';
 import { recordSections } from './records.js';
+import { nativeApp } from './platform.js';
 
 const font = { ascii: 'Calibri', hAnsi: 'Calibri', eastAsia: '等线', cs: 'Calibri' };
 const paragraph = (text, options = {}) => new Paragraph({ text, ...options });
@@ -56,7 +57,7 @@ export function createWord(title, records) {
 export async function downloadWord(title, records) {
   const blob = await Packer.toBlob(createWord(title, records));
   const filename = `${title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')}.docx`;
-  if (import.meta.env.MODE === 'harmony') {
+  if (nativeApp) {
     const { saveHarmonyDocument } = await import('./harmony.js');
     return saveHarmonyDocument(filename, blob);
   }

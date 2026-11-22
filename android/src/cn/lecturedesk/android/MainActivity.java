@@ -1,0 +1,169 @@
+package cn.lecturedesk.android;
+
+import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Bundle;
+import android.util.Base64;
+import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import java.io.OutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.json.JSONObject;
+
+public final class MainActivity extends Activity {
+    private static final int PICK_PDF = 487;
+    private static final int SAVE_FILE = 488;
+    private final ExecutorService disk = Executors.newSingleThreadExecutor();
+    private ValueCallback<Uri[]> picker;
+    private volatile SaveJob saveJob;
+    private volatile boolean destroyed;
+    private WebView view;
+    private DeskNetwork network;
+    private DeskSpeech speech;
+
+    private static class SaveJob {
+        final String id;
+        final String data;
+        SaveJob(String id, String data) { this.id = id; this.data = data; }
+    }
+
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().setStatusBarColor(Color.rgb(44, 58, 49));
+        getWindow().setNavigationBarColor(Color.rgb(44, 58, 49));
+        network = new DeskNetwork(this);
+        speech = new DeskSpeech(this);
+        view = new WebView(this);
+        WebSettings settings = view.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(true);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        view.setWebViewClient(new DeskAssets(getAssets()));
+        view.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onShowFileChooser(WebView web, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (picker != null) picker.onReceiveValue(null);
+                picker = callback;
+                Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("application/pdf");
+                try { startActivityForResult(pick, PICK_PDF); }
+                catch (ActivityNotFoundException error) { selectedPdf(null); }
+                return true;
+            }
+        });
+        view.addJavascriptInterface(new DeskBridge(), "LectureDeskNative");
+        setContentView(view);
+        view.loadUrl(DeskAssets.ORIGIN + "/");
+    }
+
+    void emit(String id, String kind, String value) {
+        String json = "{\"id\":" + JSONObject.quote(id) + ",\"kind\":" + JSONObject.quote(kind) +
+            ",\"value\":" + JSONObject.quote(value) + "}";
+        runOnUiThread(() -> {
+            if (!destroyed && DeskAssets.isLocal(Uri.parse(view.getUrl() == null ? "" : view.getUrl()))) {
+                view.evaluateJavascript("window.dispatchEvent(new CustomEvent('lecture-desk-native',{detail:" + json + "}));", null);
+            }
+        });
+    }
+
+    private void selectedPdf(Uri uri) {
+        ValueCallback<Uri[]> callback = picker;
+        picker = null;
+        if (callback != null) callback.onReceiveValue(uri == null ? null : new Uri[] { uri });
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        Uri file = result == RESULT_OK && data != null ? data.getData() : null;
+        if (request == PICK_PDF) selectedPdf(file);
+        if (request != SAVE_FILE || saveJob == null) return;
+        SaveJob job = saveJob;
+        if (file == null) {
+            saveJob = null;
+            emit(job.id, "cancelled", "");
+            return;
+        }
+        disk.execute(() -> {
+            String event = "error";
+            try (OutputStream out = getContentResolver().openOutputStream(file, "wt")) {
+                if (out != null) {
+                    out.write(Base64.decode(job.data, Base64.DEFAULT));
+                    out.flush();
+                    event = "saved";
+                }
+            } catch (Exception error) { event = "error"; }
+            finally { saveJob = null; }
+            emit(job.id, event, "");
+        });
+    }
+
+    @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] grants) {
+        super.onRequestPermissionsResult(request, permissions, grants);
+        if (request == DeskSpeech.MICROPHONE_REQUEST) {
+            speech.permissionResult(grants.length > 0 && grants[0] == PackageManager.PERMISSION_GRANTED);
+        }
+    }
+
+    @Override public void onBackPressed() {
+        view.evaluateJavascript("(function(){const dialog=document.querySelector('dialog[open]');" +
+            "if(dialog){dialog.close();return true;}const full=document.querySelector('#book-fullscreen[aria-pressed=true]');" +
+            "if(full){full.click();return true;}return false;})()", handled -> {
+                if (!"true".equals(handled)) moveTaskToBack(true);
+            });
+    }
+
+    @Override protected void onDestroy() {
+        destroyed = true;
+        selectedPdf(null);
+        network.close();
+        speech.close();
+        disk.shutdown();
+        setContentView(new android.widget.FrameLayout(this));
+        view.destroy();
+        super.onDestroy();
+    }
+
+    private final class DeskBridge {
+        @JavascriptInterface public boolean startHttp(String id, String url, String body, String auth, String type) {
+            return !destroyed && network.start(id, url, body, auth, type);
+        }
+        @JavascriptInterface public void cancelHttp(String id) { network.cancel(id); }
+
+        @JavascriptInterface public synchronized boolean saveDocument(String id, String name, String data) {
+            if (destroyed || saveJob != null || id == null || !DeskNetwork.ID.matcher(id).matches() ||
+                name == null || name.length() > 240 || !name.matches("[^<>:\"/\\\\|?*\\p{Cntrl}]+\\.(pdf|docx)") ||
+                data == null || data.isEmpty() || data.length() > 139_810_136) return false;
+            saveJob = new SaveJob(id, data);
+            runOnUiThread(() -> {
+                String type = name.endsWith(".pdf") ? "application/pdf"
+                    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType(type).putExtra(Intent.EXTRA_TITLE, name);
+                try { startActivityForResult(intent, SAVE_FILE); }
+                catch (ActivityNotFoundException error) { saveJob = null; emit(id, "error", ""); }
+            });
+            return true;
+        }
+        @JavascriptInterface public void openLink(String url) {
+            if (url == null || url.length() > 2000) return;
+            Uri uri = Uri.parse(url);
+            if ("https".equals(uri.getScheme()) && uri.getHost() != null && !DeskAssets.isLocal(uri)) {
+                runOnUiThread(() -> {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (ActivityNotFoundException ignored) {}
+                });
+            }
+        }
+        @JavascriptInterface public boolean startVoice(String request) { return !destroyed && speech.start(request); }
+        @JavascriptInterface public void finishVoice(String request) { runOnUiThread(() -> speech.finish(request)); }
+        @JavascriptInterface public void cancelVoice(String request) { runOnUiThread(() -> speech.cancel(request)); }
+    }
+}

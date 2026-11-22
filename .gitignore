@@ -20,3 +20,5 @@ harmony/**/*.p12
 harmony/**/*.p7b
 harmony/**/*.cer
 release/
+android/assets/desk/
+android/res/drawable-nodpi/app_icon.png

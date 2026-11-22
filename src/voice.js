@@ -1,4 +1,5 @@
 import { newId } from './storage.js';
+import { nativeApp } from './platform.js';
 
 function browserVoice() {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -26,7 +27,7 @@ function browserVoice() {
 }
 
 async function voiceDriver() {
-  if (import.meta.env.MODE === 'harmony') {
+  if (nativeApp) {
     const { harmonyVoice } = await import('./harmony.js');
     return harmonyVoice();
   }
@@ -38,7 +39,7 @@ export function installVoice() {
   const question = document.getElementById('question');
   const status = document.getElementById('voice-status');
   let current;
-  if (import.meta.env.MODE !== 'harmony') button.title = '使用浏览器语音识别，取决于浏览器及其语音服务';
+  if (!nativeApp) button.title = '使用浏览器语音识别，取决于浏览器及其语音服务';
 
   function show(message = '') {
     status.textContent = message;

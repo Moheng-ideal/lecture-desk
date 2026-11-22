@@ -1,5 +1,6 @@
 import { AnnotationEditorType, PermissionFlag } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { paintStrokes } from './ink.js';
+import { nativeApp } from './platform.js';
 
 export function annotatedFilename(title) {
   const safe = title.replace(/\.pdf$/i, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').trim();
@@ -54,7 +55,7 @@ export async function buildAnnotatedPdf(reader) {
 }
 
 export async function savePdfOnDevice(blob, filename) {
-  if (import.meta.env.MODE === 'harmony') {
+  if (nativeApp) {
     const { saveHarmonyDocument } = await import('./harmony.js');
     return saveHarmonyDocument(filename, blob);
   }

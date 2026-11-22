@@ -1,7 +1,9 @@
+import { nativeApp } from './platform.js';
+
 let settings = { access: '', deepseek: '', feishu: {} };
 
 async function appRequest(path, options) {
-  if (import.meta.env.MODE === 'harmony') {
+  if (nativeApp) {
     const { requestFromHarmony } = await import('./harmony.js');
     return requestFromHarmony(path, options);
   }

@@ -7,6 +7,7 @@ import { installDividers } from './layout.js';
 import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
+import { nativeApp } from './platform.js';
 
 const $ = (id) => document.getElementById(id);
 const sample = { id: 'sample', title: '函数与图像', sample: true };
@@ -292,7 +293,7 @@ function openSettings(section) {
   $('feishu-fields').hidden = !state.config.canSupplyCredentials;
   $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
   $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
-  $('configuration-hint').textContent = import.meta.env.MODE === 'harmony' ?
+  $('configuration-hint').textContent = nativeApp ?
     '凭据只在本次打开应用期间使用。课本和批注保存在平板，提问时只发送问题和引用。' :
     state.config.canSupplyCredentials ?
       '凭据只在这次页面会话中使用。PDF 和批注保存在当前设备，提问时只发送问题和引用。' :
@@ -464,7 +465,7 @@ async function exportWord() {
     const { title, records } = exportOptions();
     const { downloadWord } = await import('./word.js');
     const saved = await downloadWord(title, records);
-    status('export-status', saved ? (import.meta.env.MODE === 'harmony' ? 'Word 已保存。' : 'Word 下载已发起。') : '');
+    status('export-status', saved ? (nativeApp ? 'Word 已保存。' : 'Word 下载已发起。') : '');
   } catch (error) { status('export-status', error.message); }
   finally { action.disabled = !state.records.length; }
 }
@@ -607,7 +608,7 @@ reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, err
 installDividers();
 installTheme();
 installWhiteboard({ notify: feedback });
-if (import.meta.env.MODE === 'harmony') $('export-docx').textContent = '保存 Word';
+if (nativeApp) $('export-docx').textContent = '保存 Word';
 async function initialize() {
   refreshConfiguration();
   const [bookId, records, fingerInk, exports, tabIds, books] = await Promise.all([

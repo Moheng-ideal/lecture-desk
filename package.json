@@ -6,6 +6,7 @@
   "scripts": {
     "build": "vite build && node scripts/package.mjs",
     "build:harmony": "node scripts/harmony.mjs",
+    "build:android-assets": "node scripts/harmony.mjs android",
     "start": "node --env-file-if-exists=.env server/local.mjs",
     "test": "node --test"
   },

@@ -13,11 +13,11 @@ function bridge() {
     const ready = () => {
       clearTimeout(timer);
       if (window.LectureDeskNative) resolve(window.LectureDeskNative);
-      else reject(new Error('鸿蒙应用接口不可用。'));
+      else reject(new Error('应用的系统接口不可用。'));
     };
     const timer = setTimeout(() => {
       window.removeEventListener(nativeReady, ready);
-      reject(new Error('鸿蒙应用接口未就绪。'));
+      reject(new Error('应用的系统接口未就绪。'));
     }, 5000);
     window.addEventListener(nativeReady, ready, { once: true });
   });
@@ -68,7 +68,7 @@ async function fetchFromHarmony(url, { headers, body, signal }) {
     });
     pending.set(id, (message) => {
       if (message.kind === 'error') {
-        stop(new Error('鸿蒙应用无法连接上游服务。'));
+        stop(new Error('应用无法连接在线服务。'));
         return;
       }
       if (message.kind === 'headers') {
@@ -97,7 +97,7 @@ async function fetchFromHarmony(url, { headers, body, signal }) {
     signal?.addEventListener('abort', abort, { once: true });
     try {
       if (!native.startHttp(id, url, body, requestHeaders.get('authorization') || '', requestHeaders.get('content-type') || 'application/json')) {
-        stop(new Error('鸿蒙应用无法处理该请求。'));
+        stop(new Error('应用无法处理该请求。'));
       }
     } catch (error) { stop(error); }
   });
@@ -120,7 +120,7 @@ export async function harmonyVoice() {
       });
       try {
         if (native.startVoice(id)) return;
-        throw new Error('无法开始鸿蒙语音输入。');
+        throw new Error('无法开始语音输入。');
       } catch (error) {
         pending.delete(id);
         throw error;
