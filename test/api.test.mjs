@@ -45,8 +45,26 @@ test('streams a grounded teaching request without sending the original PDF', asy
   assert.equal(result.status, 200);
   assert.match(await result.text(), /\[DONE\]/);
   assert.equal(outgoing.model, 'deepseek-flash');
+  assert.equal(outgoing.max_tokens, 393216);
   assert.match(outgoing.messages[1].content, /《函数与图像》第 2 页/);
   assert.match(outgoing.messages[1].content, /图像最低点/);
+});
+
+test('adds optional learner context and style without truncating a long prior answer', async () => {
+  const longAnswer = '推导步骤。'.repeat(12000);
+  const preferences = { profile: '第一次学晶体结构', style: '用助教的口吻' };
+  const result = await handleApi(post('/api/chat', {
+    ...question, preferences, history: [{ ...question, answer: longAnswer }],
+  }), environment, {
+    fetcher: async (_url, config) => {
+      const { messages } = JSON.parse(config.body);
+      assert.match(messages[0].content, /第一次学晶体结构/);
+      assert.match(messages[0].content, /用助教的口吻/);
+      assert.equal(messages[2].content, longAnswer);
+      return new Response('data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    },
+  });
+  assert.equal(result.status, 200);
 });
 
 test('resumes a partly written Feishu document using the same idempotency key', async () => {

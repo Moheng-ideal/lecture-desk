@@ -87,7 +87,7 @@ export async function streamAnswer(data, onText, signal) {
     throw new Error('讲解未完整返回，可以重试。');
   }
   if (!text.trim()) throw new Error('DeepSeek 没有返回讲解内容。');
-  if (reason === 'length') text += '\n\n（本次讲解到达长度上限，可以继续追问。）';
+  if (reason === 'length') text += '\n\n（DeepSeek 已达到单次输出上限，可以继续追问。）';
   return text;
 }
 

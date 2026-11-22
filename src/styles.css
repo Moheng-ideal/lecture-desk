@@ -264,6 +264,12 @@ dialog header button { font-size: 1.4rem; }
 dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .dialog-body { padding: 15px 18px; }
 .settings-fields, .feishu-fields, .dialog-body label { display: grid; gap: 9px; }
+.teaching-settings { border-top: 1px solid var(--line); padding-top: 8px; }
+.teaching-settings summary { cursor: pointer; padding: 5px 0; font-weight: 600; }
+.teaching-settings label { margin-block: 10px; }
+.teaching-settings :is(textarea, select) { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: var(--surface); }
+.teaching-settings textarea { resize: vertical; }
+.teaching-settings p { color: var(--muted); font-size: .82rem; }
 .dialog-body label { font-size: .9rem; }
 .dialog-body input:not([type="checkbox"], [type="radio"]) { width: 100%; min-height: 40px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); min-width: 0; }
 .theme-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 8px 10px 10px; border: 1px solid var(--line); border-radius: 9px; }

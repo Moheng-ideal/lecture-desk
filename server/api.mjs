@@ -31,8 +31,7 @@ const json = (value, status = 200) => new Response(JSON.stringify(value), {
   },
 });
 
-function upstreamSignal(signal, timeout) {
-  const deadline = AbortSignal.timeout(timeout);
+function upstreamSignal(signal, deadline) {
   if (AbortSignal.any) return AbortSignal.any([signal, deadline]);
   const combined = new AbortController();
   for (const source of [signal, deadline]) {
@@ -68,7 +67,7 @@ function references(value) {
   });
 }
 
-function chatInput({ question, references: excerpts, history }) {
+function chatInput({ question, references: excerpts, history, preferences }) {
   const userText = (text, quotes) => quotes.length ? [
     '课本资料（JSON 格式）',
     JSON.stringify(quotes.map((ref) => ({ source: sourceLabel(ref), text: ref.text }))),
@@ -77,10 +76,14 @@ function chatInput({ question, references: excerpts, history }) {
   ].join('\n') : text;
   const turns = array(history, 8, '对话历史').flatMap((turn) => [
     { role: 'user', content: userText(str(turn?.question, 6000, '历史问题'), references(turn.references)) },
-    { role: 'assistant', content: str(turn.answer, 50000, '历史回答') },
+    { role: 'assistant', content: str(turn.answer, 950000, '历史回答') },
   ]);
+  const profile = str(preferences?.profile ?? '', 4000, '用户画像', true);
+  const style = str(preferences?.style ?? '', 4000, '回复风格', true);
+  const personalization = profile || style ? '\n用户设置（JSON）\n' + JSON.stringify({ profile, style }) +
+    '\n根据画像调整难度、称呼和举例。自定义回复风格优先于默认讲解节奏，继续遵守资料引用和公式图形格式。' : '';
   return [
-    { role: 'system', content: TEACHER },
+    { role: 'system', content: TEACHER + personalization },
     ...turns,
     { role: 'user', content: userText(str(question, 6000, '问题'), references(excerpts)) },
   ];
@@ -125,14 +128,20 @@ function httpsOrLocal(url) {
 
 async function ask(body, key, request, fetcher) {
   if (!key) throw new HttpError(422, '请先在设置中连接 DeepSeek。');
-  const upstream = await fetcher(DEEPSEEK, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL, messages: chatInput(body), thinking: { type: 'disabled' }, max_tokens: 2400, stream: true,
-    }),
-    signal: upstreamSignal(request.signal, 110000),
-  });
+  const connection = new AbortController();
+  const timeout = setTimeout(() => connection.abort(), 110000);
+  let upstream;
+  try {
+    const signal = upstreamSignal(request.signal, connection.signal);
+    upstream = await fetcher(DEEPSEEK, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL, messages: chatInput(body), thinking: { type: 'disabled' }, max_tokens: 393216, stream: true,
+      }),
+      signal,
+    });
+  } finally { clearTimeout(timeout); }
   if (!upstream.ok || !upstream.headers.get('content-type')?.includes('text/event-stream')) {
     const status = upstream.status;
     await upstream.body?.cancel();
@@ -237,7 +246,7 @@ async function saveFeishu(body, credentials, fetcher) {
     if (!Number.isFinite(Date.parse(record?.date))) throw new HttpError(400, '问答日期无效。');
     return {
       question: str(record.question, 6000, '问题'),
-      answer: str(record.answer, 50000, '回答'),
+      answer: str(record.answer, 4000000, '回答'),
       date: record.date,
       references: references(record.references),
     };

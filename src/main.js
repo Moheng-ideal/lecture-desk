@@ -24,6 +24,10 @@ let changingBook;
 let exportBusy = false;
 let savedKey;
 let credentialError = '';
+let teachingPreferences = { profile: '', mode: 'default', style: '' };
+const preferencesReady = readState('teachingPreferences').then((saved) => {
+  if (saved) teachingPreferences = saved;
+}).catch(() => {});
 const credentialsReady = loadDeepSeekKey().then((key) => {
   savedKey = key;
   saveConnections({ ...getConnections(), deepseek: key });
@@ -137,6 +141,39 @@ async function renderAnswer(target, answer) {
   } catch {
     target.className = 'pending';
   }
+}
+
+function liveAnswer(target, scroll) {
+  const formatter = import('./format-answer.js').catch(() => null);
+  let latest = '';
+  let lastRendered;
+  let timer;
+  let closed = false;
+  const paint = (module, text) => {
+    const follow = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
+    try {
+      if (module) module.formatAnswer(target, text);
+      else target.textContent = text;
+    } catch { target.textContent = text; }
+    lastRendered = text;
+    if (follow) scrollToEnd();
+  };
+  return {
+    update(text) {
+      latest = text;
+      if (timer || closed) return;
+      timer = setTimeout(async () => {
+        const module = await formatter;
+        timer = null;
+        if (!closed && latest !== lastRendered) paint(module, latest);
+      }, Math.min(1200, 65 + Math.floor(text.length / 400)));
+    },
+    async finish(text) {
+      closed = true;
+      clearTimeout(timer);
+      if (text !== lastRendered) paint(await formatter, text);
+    },
+  };
 }
 
 function scrollToEnd() {
@@ -307,7 +344,7 @@ async function openLibrary() {
 }
 
 async function openSettings(section) {
-  await credentialsReady;
+  await Promise.all([credentialsReady, preferencesReady]);
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
   $('credential-fields').hidden = !state.config.canSupplyCredentials;
@@ -326,6 +363,10 @@ async function openSettings(section) {
   $('feishu-secret').value = settings.feishu.secret || '';
   $('feishu-folder').value = settings.feishu.folder || '';
   $('finger-ink').checked = Boolean(reader.fingerInk);
+  $('learner-profile').value = teachingPreferences.profile;
+  $('teacher-style-mode').value = teachingPreferences.mode;
+  $('teacher-style-field').hidden = teachingPreferences.mode !== 'custom';
+  $('teacher-style').value = teachingPreferences.style;
   if (section === 'feishu') {
     $('feishu-settings').open = true;
     $('feishu-guide').open = true;
@@ -333,11 +374,11 @@ async function openSettings(section) {
   if (!$('settings').open) $('settings').showModal();
 }
 
-function precedingTurns(question, references) {
+function precedingTurns(question, references, preferences) {
   const candidates = state.records.filter((record) => record.bookId === state.book.id).slice(-8).reverse();
   const turns = [];
   const size = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
-  let room = 900000 - size({ question, references });
+  let room = 900000 - size({ question, references, preferences });
   for (const record of candidates) {
     const turn = { question: record.question, answer: record.answer, references: record.references };
     room -= size(turn);
@@ -348,7 +389,7 @@ function precedingTurns(question, references) {
 }
 
 async function ask(question, references = state.references) {
-  await credentialsReady;
+  await Promise.all([credentialsReady, preferencesReady]);
   if (state.stream || changingBook) return;
   question = question.trim() || (references.length ? '请讲解这段课本内容。' : '');
   if (!question) {
@@ -381,26 +422,27 @@ async function ask(question, references = state.references) {
   $('messages').append(user, item);
   scrollToEnd();
   syncChat();
+  const live = liveAnswer(content, $('chat-scroll'));
   let answer = '';
   try {
-    const history = precedingTurns(question, references);
-    answer = await streamAnswer({ question, references, history }, (text) => {
+    const preferences = { profile: teachingPreferences.profile,
+      style: teachingPreferences.mode === 'custom' ? teachingPreferences.style : '' };
+    const history = precedingTurns(question, references, preferences);
+    answer = await streamAnswer({ question, references, history, preferences }, (text) => {
       answer = text;
-      const scroll = $('chat-scroll');
-      const wasNearBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
-      content.textContent = text;
-      if (wasNearBottom) scrollToEnd();
+      live.update(text);
     }, controller.signal);
     record.answer = answer;
     state.records.push(record);
     $('record-count').textContent = state.records.length;
-    await renderAnswer(content, answer);
+    await live.finish(answer);
     await saveRecord(record).catch(() => feedback('问答暂存在内存，可以立即导出问答录。'));
   } catch (error) {
     const stopped = error.name === 'AbortError';
     const note = stopped ? '本次讲解已停止。' : error.message;
     status('chat-status', note);
-    content.textContent = answer ? `${answer}\n\n${note} 这条讲解未收入问答录。` : note;
+    await live.finish(answer);
+    content.append(element('p', answer ? `${note} 这条讲解未收入问答录。` : note));
     state.failed = [user, item];
     if (!$('question').value.trim()) $('question').value = question;
     if (!state.references.length) {
@@ -636,6 +678,9 @@ $('pdf-cloud-setup').onclick = () => {
   $('pdf-save-dialog').close();
   openSettings('feishu');
 };
+$('teacher-style-mode').onchange = (event) => {
+  $('teacher-style-field').hidden = event.target.value !== 'custom';
+};
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   const trim = (id) => $(id).value.trim();
@@ -658,11 +703,15 @@ $('settings-form').onsubmit = async (event) => {
     } finally { if (submit) submit.disabled = false; }
   }
   saveConnections({ access: trim('access-code'), deepseek, feishu });
+  teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
+    style: trim('teacher-style') };
+  const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
   reader.fingerInk = $('finger-ink').checked;
   saveState('fingerInk', reader.fingerInk).catch(() => {});
   $('settings').close();
   await refreshConfiguration();
-  feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' : credentialError || '设置已应用。');
+  feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
+    credentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
 };
 $('records-open').onclick = openRecords;
 $('record-list').onchange = resetExportDisplay;

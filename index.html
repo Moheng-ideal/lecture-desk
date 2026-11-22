@@ -219,6 +219,16 @@
         <label id="pass-label" hidden>局域网访问口令<input id="access-code" type="password" maxlength="180" autocomplete="off"></label>
         <label id="credential-fields">DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
         <p id="credential-status" role="status" hidden></p>
+        <details class="teaching-settings">
+          <summary>用户画像与回复风格</summary>
+          <label>用户画像<textarea id="learner-profile" rows="3" maxlength="4000" placeholder="例如：刚开始学半导体物理，熟悉微积分，希望先讲直觉再推导。"></textarea></label>
+          <label>讲解师风格<select id="teacher-style-mode">
+            <option value="default">默认讲解师</option>
+            <option value="custom">自定义提示词</option>
+          </select></label>
+          <label id="teacher-style-field" hidden>自定义回复风格<textarea id="teacher-style" rows="3" maxlength="4000" placeholder="例如：像耐心的助教一样说话，多用类比，给出关键公式和一个例题。"></textarea></label>
+          <p>设置保留在本机。提问时，使用中的画像和风格会随问题发给 DeepSeek。</p>
+        </details>
         <details id="feishu-settings" class="feishu-settings">
           <summary>飞书云文档</summary>
           <details id="feishu-guide" class="feishu-guide">
