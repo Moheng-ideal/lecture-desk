@@ -6,3 +6,17 @@ dist/
 .sites-runtime/
 playwright-report/
 test-results/
+harmony/.hvigor/
+harmony/.idea/
+harmony/.harmony/
+harmony/local.properties
+harmony/build/
+harmony/*/build/
+harmony/**/oh_modules/
+harmony/**/.cxx/
+harmony/entry/src/main/resources/rawfile/desk/
+harmony/AppScope/resources/base/media/app_icon.png
+harmony/**/*.p12
+harmony/**/*.p7b
+harmony/**/*.cer
+release/

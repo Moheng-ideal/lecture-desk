@@ -55,12 +55,18 @@ export function createWord(title, records) {
 
 export async function downloadWord(title, records) {
   const blob = await Packer.toBlob(createWord(title, records));
+  const filename = `${title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')}.docx`;
+  if (import.meta.env.MODE === 'harmony') {
+    const { saveHarmonyDocument } = await import('./harmony.js');
+    return saveHarmonyDocument(filename, blob);
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')}.docx`;
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return true;
 }

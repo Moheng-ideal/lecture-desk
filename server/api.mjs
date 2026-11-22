@@ -19,9 +19,25 @@ class HttpError extends Error {
   }
 }
 
-const json = (value, status = 200) => Response.json(value, {
-  status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+const json = (value, status = 200) => new Response(JSON.stringify(value), {
+  status, headers: {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+  },
 });
+
+function upstreamSignal(signal, timeout) {
+  const deadline = AbortSignal.timeout(timeout);
+  if (AbortSignal.any) return AbortSignal.any([signal, deadline]);
+  const combined = new AbortController();
+  for (const source of [signal, deadline]) {
+    if (source.aborted) combined.abort(source.reason);
+    else source.addEventListener('abort', () => combined.abort(source.reason), {
+      once: true, signal: combined.signal,
+    });
+  }
+  return combined.signal;
+}
 
 function str(value, max, name, allowEmpty = false) {
   if (typeof value !== 'string' || value.length > max || (!allowEmpty && !value.trim())) {
@@ -110,7 +126,7 @@ async function ask(body, key, request, fetcher) {
     body: JSON.stringify({
       model: MODEL, messages: chatInput(body), thinking: { type: 'disabled' }, max_tokens: 2400, stream: true,
     }),
-    signal: AbortSignal.any([request.signal, AbortSignal.timeout(110000)]),
+    signal: upstreamSignal(request.signal, 110000),
   });
   if (!upstream.ok || !upstream.headers.get('content-type')?.includes('text/event-stream')) {
     const status = upstream.status;
@@ -234,9 +250,9 @@ async function saveFeishu(body, credentials, fetcher) {
   return json({ url, created: true });
 }
 
-export async function handleApi(request, env = {}, { hosted = false, fetcher = fetch } = {}) {
+export async function handleApi(request, env = {}, { hosted = false, localApp = false, fetcher = fetch } = {}) {
   const url = new URL(request.url);
-  const sameOrigin = request.headers.get('origin') === url.origin;
+  const sameOrigin = localApp || request.headers.get('origin') === url.origin;
   const privateServerCredentials = !hosted || Boolean(request.headers.get('oai-authenticated-user-id'));
   const canSupplyCredentials = httpsOrLocal(url);
   const configured = privateServerCredentials && {

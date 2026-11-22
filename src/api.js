@@ -1,5 +1,13 @@
 let settings = { access: '', deepseek: '', feishu: {} };
 
+async function appRequest(path, options) {
+  if (import.meta.env.MODE === 'harmony') {
+    const { requestFromHarmony } = await import('./harmony.js');
+    return requestFromHarmony(path, options);
+  }
+  return fetch(path, options);
+}
+
 export function saveConnections(configuration) {
   settings = configuration;
 }
@@ -9,7 +17,7 @@ export function getConnections() {
 }
 
 export async function getConfiguration() {
-  const response = await fetch('/api/config', {
+  const response = await appRequest('/api/config', {
     headers: settings.access ? { 'X-Teach-Code': settings.access } : {},
     cache: 'no-store',
   });
@@ -25,7 +33,7 @@ export class ApiError extends Error {
 }
 
 async function post(path, data, credentials, signal) {
-  const response = await fetch(`/api/${path}`, {
+  const response = await appRequest(`/api/${path}`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', ...(settings.access && { 'X-Teach-Code': settings.access }) },
     body: JSON.stringify({ ...data, credentials }),

@@ -215,9 +215,11 @@ function openSettings(section) {
   $('feishu-fields').hidden = !state.config.canSupplyCredentials;
   $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
   $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
-  $('configuration-hint').textContent = state.config.canSupplyCredentials ?
-    '凭据只在这次页面会话中使用。PDF 和批注保存在当前设备，提问时只发送问题和引用。' :
-    '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
+  $('configuration-hint').textContent = import.meta.env.MODE === 'harmony' ?
+    '凭据只在本次打开应用期间使用。课本和批注保存在平板，提问时只发送问题和引用。' :
+    state.config.canSupplyCredentials ?
+      '凭据只在这次页面会话中使用。PDF 和批注保存在当前设备，提问时只发送问题和引用。' :
+      '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
   $('access-code').value = settings.access;
   $('deepseek-key').value = settings.deepseek;
   $('feishu-id').value = settings.feishu.appId || '';
@@ -384,8 +386,8 @@ async function exportWord() {
   try {
     const { title, records } = exportOptions();
     const { downloadWord } = await import('./word.js');
-    await downloadWord(title, records);
-    status('export-status', 'Word 下载已发起。');
+    const saved = await downloadWord(title, records);
+    status('export-status', saved ? (import.meta.env.MODE === 'harmony' ? 'Word 已保存。' : 'Word 下载已发起。') : '');
   } catch (error) { status('export-status', error.message); }
   finally { action.disabled = !state.records.length; }
 }
@@ -478,6 +480,7 @@ $('teach-next').onclick = () => teach('请接着上一页，讲解当前页的�
 for (const target of document.querySelectorAll('[data-suggest]')) target.onclick = () => teach(target.dataset.suggest);
 
 reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
+if (import.meta.env.MODE === 'harmony') $('export-docx').textContent = '保存 Word';
 async function initialize() {
   refreshConfiguration();
   const [bookId, records, fingerInk, exports] = await Promise.all([
