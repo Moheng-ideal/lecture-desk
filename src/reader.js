@@ -1,7 +1,8 @@
 import { getDocument, GlobalWorkerOptions, TextLayer } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { eraseAt, paintStrokes } from './ink.js';
+import { mixPoint, paintStrokes } from './ink.js';
+import { InkTools } from './ink-tools.js';
 import { readState, saveState } from './storage.js';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -50,11 +51,13 @@ export class Reader {
     this.onChange = change;
     this.onError = error;
     this.reader = byId('reader');
-    this.paper = byId('page-wrap');
-    this.canvas = byId('pdf-canvas');
-    this.ink = byId('ink-canvas');
-    this.textLayer = byId('text-layer');
-    this.rect = byId('selection-rect');
+    this.stack = byId('page-stack');
+    this.surfaces = [];
+    this.nearby = new Set();
+    this.surfacesByElement = new WeakMap();
+    this.pageObserver = new IntersectionObserver((entries) => this.observePages(entries), {
+      root: this.reader, rootMargin: '60% 0px',
+    });
     this.zoom = 1;
     this.tool = 'read';
     this.page = 1;
@@ -62,14 +65,16 @@ export class Reader {
     this.history = new Map();
     this.revision = 0;
     this.openRevision = 0;
-    this.colorByTool = { pen: '#ba472d', marker: '#dfad2e' };
+    this.inkTools = new InkTools(this);
+    this.setTool('read');
 
     byId('modes').addEventListener('click', (event) => {
       const button = event.target.closest('[data-tool]');
-      if (button) this.setTool(button.dataset.tool);
-    });
-    byId('ink-color').addEventListener('input', (event) => {
-      this.colorByTool[this.tool === 'marker' ? 'marker' : 'pen'] = event.target.value;
+      if (!button) return;
+      const tool = button.dataset.tool;
+      const open = this.inkTools.panel.hidden || tool !== this.tool;
+      this.setTool(tool);
+      this.inkTools.toggle(open && ['pen', 'marker', 'eraser'].includes(tool));
     });
     byId('native-select').onclick = () => this.setTool(this.tool === 'native' ? 'select' : 'native');
     byId('use-selection').onclick = () => this.quoteSelection().catch(this.onError);
@@ -89,21 +94,49 @@ export class Reader {
         this.setPage(this.page + (event.key === 'PageUp' ? -1 : 1)).catch(this.onError);
       }
     });
-    this.ink.addEventListener('pointerdown', (event) => this.pointerDown(event));
-    this.ink.addEventListener('pointermove', (event) => this.pointerMove(event));
-    this.ink.addEventListener('pointerup', (event) => this.pointerEnd(event));
-    this.ink.addEventListener('pointercancel', (event) => this.pointerEnd(event, true));
-    this.ink.addEventListener('lostpointercapture', (event) => this.pointerEnd(event, true));
+    this.stack.addEventListener('pointerdown', (event) => this.pointerDown(event));
+    this.stack.addEventListener('pointermove', (event) => this.pointerMove(event));
+    this.stack.addEventListener('pointerup', (event) => this.pointerEnd(event));
+    this.stack.addEventListener('pointercancel', (event) => this.pointerEnd(event, true));
+    this.stack.addEventListener('lostpointercapture', (event) => this.pointerEnd(event, true));
+    document.addEventListener('selectionchange', () => {
+      if (this.tool !== 'native') return;
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return;
+      const paper = selection.anchorNode?.parentElement?.closest('.page-slot');
+      if (paper && paper === selection.focusNode?.parentElement?.closest('.page-slot')) {
+        this.selectPage(this.surfacesByElement.get(paper), false);
+      }
+    });
+    this.reader.addEventListener('scroll', () => {
+      if (this.scrollFrame) return;
+      this.scrollFrame = requestAnimationFrame(() => {
+        this.scrollFrame = null;
+        this.pageAtScroll();
+      });
+    }, { passive: true });
     let resize;
     new ResizeObserver(() => {
       clearTimeout(resize);
       resize = setTimeout(() => {
         const width = this.availableWidth();
-        if (this.pdf && width > 0 && Math.abs(width - this.lastWidth) > 1) this.render().catch(this.onError);
+        if (this.pdf && width > 0 && Math.abs(width - this.lastWidth) > 1) this.reflow();
       }, 140);
     }).observe(this.reader);
     this.sync();
   }
+
+  get currentSurface() { return this.surfaces[this.page - 1]; }
+  get rendered() { return this.currentSurface?.rendered; }
+  get canvas() { return this.currentSurface?.canvas; }
+  get ink() { return this.currentSurface?.ink; }
+  get textLayer() { return this.currentSurface?.textLayer; }
+  get rect() { return this.currentSurface?.rect; }
+  get textItems() { return this.currentSurface?.textItems || []; }
+  get textDivs() { return this.currentSurface?.textDivs || []; }
+
+  get fingerInk() { return this.reader.dataset.fingerInk === 'true'; }
+  set fingerInk(value) { this.reader.dataset.fingerInk = String(Boolean(value)); }
 
   async open(book) {
     const revision = ++this.openRevision;
@@ -127,22 +160,42 @@ export class Reader {
     };
     try {
       const pdf = await task.promise;
-      const prior = await readState(`reader:${book.id}`).catch(() => null);
+      const [prior, first] = await Promise.all([
+        readState(`reader:${book.id}`).catch(() => null),
+        pdf.getPage(1),
+      ]);
       if (revision !== this.openRevision) {
         await task.destroy();
         return false;
       }
-      this.renderTask?.cancel();
-      this.layerTask?.cancel();
+      this.finishPointer(true);
+      this.clearSelection();
+      this.pageObserver.disconnect();
+      for (const surface of this.surfaces) this.releaseSurface(surface);
+      this.nearby.clear();
       this.pdf?.destroy().catch(() => {});
       this.pdf = pdf;
       this.book = book;
       this.pages = prior?.pages || {};
       this.page = clamp(prior?.page || 1, 1, pdf.numPages);
       this.history.clear();
-      this.reader.scrollTop = 0;
-      this.reader.scrollLeft = 0;
-      await this.render();
+      const fallback = first.getViewport({ scale: 1 });
+      this.lastWidth = this.availableWidth() || this.lastWidth || 560;
+      const list = document.createDocumentFragment();
+      this.surfaces = Array.from({ length: pdf.numPages }, (_, i) => {
+        const paper = document.createElement('div');
+        paper.className = 'page-slot';
+        const surface = { pdf, number: i + 1, paper, viewport: fallback, generation: 0 };
+        this.surfacesByElement.set(paper, surface);
+        this.sizeSurface(surface);
+        list.append(paper);
+        return surface;
+      });
+      this.stack.replaceChildren(list);
+      for (const surface of this.surfaces) this.pageObserver.observe(surface.paper);
+      this.scrollToPage(this.currentSurface);
+      this.sync();
+      await this.render(this.currentSurface);
       return revision === this.openRevision;
     } catch (error) {
       if (revision !== this.openRevision) return false;
@@ -159,49 +212,143 @@ export class Reader {
     return Math.max(0, this.reader.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
   }
 
-  async render() {
-    this.finishPointer(true);
-    const revision = ++this.revision;
-    this.renderTask?.cancel();
-    this.layerTask?.cancel();
-    this.clearSelection();
-    this.rendered = false;
+  sizeSurface(surface) {
+    const { width, height } = surface.viewport;
+    const scale = Math.min(1.55, this.lastWidth / width) * this.zoom;
+    surface.paper.style.width = `${width * scale}px`;
+    surface.paper.style.height = `${height * scale}px`;
+    return scale;
+  }
+
+  scrollToPage(surface) {
+    this.reader.scrollTop = surface.paper.offsetTop - parseFloat(getComputedStyle(this.reader).paddingTop);
+  }
+
+  selectPage(surface, clear = true) {
+    if (!surface || surface === this.currentSurface) return;
+    if (clear) this.clearSelection();
+    this.page = surface.number;
+    this.revision++;
+    this.persist();
     this.sync();
-    const available = this.availableWidth() || this.lastWidth;
-    if (!available) return;
-    this.lastWidth = available;
-    const page = await this.pdf.getPage(this.page);
-    if (revision !== this.revision) return;
-    const scale = Math.min(1.55, available / page.getViewport({ scale: 1 }).width) * this.zoom;
-    const viewport = page.getViewport({ scale });
-    this.paper.style.width = `${viewport.width}px`;
-    this.paper.style.height = `${viewport.height}px`;
-    this.paper.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
-    const pixels = Math.min(window.devicePixelRatio || 1, 2.3, Math.sqrt(7500000 / (viewport.width * viewport.height)));
-    for (const canvas of [this.canvas, this.ink]) {
-      canvas.width = Math.max(1, Math.ceil(viewport.width * pixels));
-      canvas.height = Math.max(1, Math.ceil(viewport.height * pixels));
+  }
+
+  pageAtScroll() {
+    if (this.pointer || !this.pdf || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
+    const reader = this.reader.getBoundingClientRect();
+    const focus = reader.top + Math.min(120, reader.height * .22);
+    let best;
+    let distance = Infinity;
+    for (const surface of this.nearby) {
+      const { top, bottom } = surface.paper.getBoundingClientRect();
+      if (bottom <= reader.top || top >= reader.bottom) continue;
+      const delta = Math.max(top - focus, focus - bottom, 0);
+      if (delta < distance) {
+        best = surface;
+        distance = delta;
+      }
     }
-    this.textLayer.replaceChildren();
-    this.renderTask = page.render({
-      canvasContext: this.canvas.getContext('2d'),
-      viewport,
-      transform: [pixels, 0, 0, pixels, 0, 0],
+    this.selectPage(best);
+  }
+
+  observePages(entries) {
+    for (const entry of entries) {
+      const surface = this.surfacesByElement.get(entry.target);
+      if (!surface || surface.pdf !== this.pdf) continue;
+      if (entry.isIntersecting) {
+        this.nearby.add(surface);
+        this.render(surface).catch(this.onError);
+      } else {
+        this.nearby.delete(surface);
+        if (surface === this.currentSurface) this.finishPointer(true);
+        this.releaseSurface(surface);
+      }
+    }
+    this.pageAtScroll();
+    this.sync();
+  }
+
+  releaseSurface(surface) {
+    surface.generation++;
+    surface.renderTask?.cancel();
+    surface.layerTask?.cancel();
+    for (const canvas of [surface.canvas, surface.ink]) {
+      if (canvas) canvas.width = canvas.height = 0;
+    }
+    surface.paper.replaceChildren();
+    Object.assign(surface, {
+      canvas: null, ink: null, textLayer: null, rect: null, textItems: null, textDivs: null,
+      renderTask: null, layerTask: null, pending: null, rendered: false,
     });
+  }
+
+  reflow() {
+    const width = this.availableWidth();
+    if (!width || !this.currentSurface) return;
+    this.finishPointer(true);
+    this.clearSelection();
+    this.revision++;
+    const anchor = this.currentSurface.paper;
+    const offset = (this.reader.scrollTop - anchor.offsetTop) / anchor.offsetHeight;
+    this.lastWidth = width;
+    for (const surface of this.surfaces) this.sizeSurface(surface);
+    this.reader.scrollTop = anchor.offsetTop + offset * anchor.offsetHeight;
+    for (const surface of new Set([this.currentSurface, ...this.nearby])) {
+      this.releaseSurface(surface);
+      this.render(surface).catch(this.onError);
+    }
+    this.sync();
+  }
+
+  render(surface) {
+    if (surface.rendered) return Promise.resolve();
+    if (!surface.pending) {
+      const generation = ++surface.generation;
+      surface.pending = this.drawSurface(surface, generation).finally(() => {
+        if (surface.generation === generation) surface.pending = null;
+      });
+    }
+    return surface.pending;
+  }
+
+  async drawSurface(surface, generation) {
+    const stillCurrent = () => surface.generation === generation && surface.pdf === this.pdf;
     try {
-      const [content] = await Promise.all([page.getTextContent(), this.renderTask.promise]);
-      if (revision !== this.revision) return;
-      this.layerTask = new TextLayer({ textContentSource: content, container: this.textLayer, viewport });
-      await this.layerTask.render();
-      if (revision !== this.revision) return;
-      this.textItems = content.items.filter((item) => typeof item.str === 'string');
-      this.textDivs = this.layerTask.textDivs;
-      this.rendered = true;
-      this.paint();
-      this.showStatus('');
-      this.sync();
+      const page = await surface.pdf.getPage(surface.number);
+      if (!stillCurrent()) return;
+      surface.viewport = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: this.sizeSurface(surface) });
+      const contents = byId('page-template').content.firstElementChild.cloneNode(true);
+      const [canvas, textLayer, ink, rect] = contents.children;
+      surface.paper.setAttribute('aria-label', `第 ${surface.number} 页`);
+      surface.paper.replaceChildren(contents);
+      Object.assign(surface, { canvas, textLayer, ink, rect });
+      contents.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
+      const pixels = Math.min(window.devicePixelRatio || 1, 2.3, Math.sqrt(5000000 / (viewport.width * viewport.height)));
+      for (const layer of [canvas, ink]) {
+        layer.width = Math.max(1, Math.ceil(viewport.width * pixels));
+        layer.height = Math.max(1, Math.ceil(viewport.height * pixels));
+      }
+      surface.renderTask = page.render({
+        canvasContext: canvas.getContext('2d'),
+        viewport,
+        transform: [pixels, 0, 0, pixels, 0, 0],
+      });
+      const [content] = await Promise.all([page.getTextContent(), surface.renderTask.promise]);
+      if (!stillCurrent()) return;
+      surface.layerTask = new TextLayer({ textContentSource: content, container: textLayer, viewport });
+      await surface.layerTask.render();
+      if (!stillCurrent()) return;
+      surface.textItems = content.items.filter((item) => typeof item.str === 'string');
+      surface.textDivs = surface.layerTask.textDivs;
+      surface.rendered = true;
+      this.paint(surface);
+      if (surface === this.currentSurface) {
+        this.showStatus('');
+        this.sync();
+      }
     } catch (error) {
-      if (revision === this.revision && !['RenderingCancelledException', 'AbortException'].includes(error.name)) throw error;
+      if (stillCurrent() && !['RenderingCancelledException', 'AbortException'].includes(error.name)) throw error;
     }
   }
 
@@ -218,6 +365,7 @@ export class Reader {
     byId('page-number').value = this.page;
     byId('page-number').max = this.pdf?.numPages || 1;
     byId('page-number').disabled = !canRead;
+    byId('pdf-export').disabled = !canRead;
     byId('page-total').textContent = `/ ${this.pdf?.numPages || '—'}`;
     byId('prev').disabled = !canRead || this.page <= 1;
     byId('next').disabled = !canRead || this.page >= this.pdf.numPages;
@@ -240,22 +388,23 @@ export class Reader {
       return;
     }
     this.finishPointer(true);
-    this.page = target;
-    this.reader.scrollTop = this.reader.scrollLeft = 0;
-    this.persist();
-    await this.render();
+    const surface = this.surfaces[target - 1];
+    this.selectPage(surface);
+    this.scrollToPage(surface);
+    await this.render(surface);
   }
 
   setZoom(value) {
     if (!this.pdf) return;
     this.zoom = clamp(value, .75, 2.5);
-    this.render().catch(this.onError);
+    this.reflow();
   }
 
   setTool(tool) {
     this.finishPointer(true);
     this.tool = tool;
-    this.paper.dataset.tool = tool;
+    if (this.tool === 'pen' || this.tool === 'marker') this.lastPen = this.tool;
+    this.reader.dataset.tool = tool;
     this.clearSelection();
     for (const button of byId('modes').querySelectorAll('button')) {
       button.setAttribute('aria-pressed', String(button.dataset.tool === (tool === 'native' ? 'select' : tool)));
@@ -264,14 +413,14 @@ export class Reader {
     byId('selection-bar').hidden = !selecting;
     byId('native-select').textContent = tool === 'native' ? '返回框选' : '系统选区';
     byId('selection-note').textContent = tool === 'native' ? '长按或拖动选择文字，再点引用选文。' : scanMessage;
-    if (this.colorByTool[tool]) byId('ink-color').value = this.colorByTool[tool];
+    this.inkTools.sync();
   }
 
   clearSelection() {
     this.bounds = null;
-    this.rect.hidden = true;
+    if (this.rect) this.rect.hidden = true;
     const selection = window.getSelection();
-    if (selection?.anchorNode && this.textLayer.contains(selection.anchorNode)) selection.removeAllRanges();
+    if (selection?.anchorNode && this.stack.contains(selection.anchorNode)) selection.removeAllRanges();
     if (this.tool === 'select') byId('selection-note').textContent = scanMessage;
   }
 
@@ -285,23 +434,21 @@ export class Reader {
   }
 
   pointerDown(event) {
-    if (!this.rendered || this.pointer || event.button !== 0) return;
+    if (this.pointer || event.button !== 0 || (event.pointerType === 'touch' && !this.fingerInk)) return;
+    if (!event.target.classList.contains('ink-canvas')) return;
+    const surface = this.surfacesByElement.get(event.target.closest('.page-slot'));
+    if (!surface?.rendered) return;
+    this.selectPage(surface);
     const p = this.point(event);
-    const isPan = event.pointerType === 'touch' && this.tool !== 'select' && !this.fingerInk;
     this.pointer = {
-      id: event.pointerId, tool: isPan ? 'pan' : this.tool,
-      initial: p, x: event.clientX, y: event.clientY, before: this.currentStrokes,
+      id: event.pointerId, tool: this.tool, stylus: event.pointerType === 'pen',
+      initial: p, last: p, before: this.currentStrokes, path: [p],
     };
     this.ink.setPointerCapture(event.pointerId);
     if (this.pointer.tool === 'select') this.setBounds(p, p);
     if (this.pointer.tool === 'eraser') this.erase(p);
     if (['pen', 'marker'].includes(this.pointer.tool)) {
-      this.draft = {
-        tool: this.tool,
-        color: this.colorByTool[this.tool],
-        size: Number(byId('ink-size').value) * (this.tool === 'marker' ? 3.5 : 1),
-        points: [p],
-      };
+      this.draft = this.inkTools.stroke([p], this.ink.clientWidth / this.zoom);
       this.paint();
     }
     event.preventDefault();
@@ -310,17 +457,15 @@ export class Reader {
   pointerMove(event) {
     const active = this.pointer;
     if (active?.id !== event.pointerId) return;
-    if (active.tool === 'pan') {
-      this.reader.scrollBy(active.x - event.clientX, active.y - event.clientY);
-      active.x = event.clientX;
-      active.y = event.clientY;
-      return;
-    }
     if (active.tool === 'select') this.setBounds(active.initial, this.point(event));
-    if (active.tool === 'eraser') this.erase(this.point(event));
+    const samples = event.getCoalescedEvents?.() || [];
+    const points = (samples.length ? samples : [event]).map((sample) => this.point(sample));
+    if (active.tool === 'eraser') {
+      for (const point of points) this.erase(point, false);
+      this.paint();
+    }
     if (this.draft) {
-      const samples = event.getCoalescedEvents?.() || [];
-      for (const sample of samples.length ? samples : [event]) this.draft.points.push(this.point(sample));
+      this.draft.points.push(...points);
       this.paint();
     }
   }
@@ -328,6 +473,13 @@ export class Reader {
   pointerEnd(event, cancelled = false) {
     if (this.pointer?.id !== event.pointerId) return;
     if (!cancelled && this.pointer.tool === 'select') this.setBounds(this.pointer.initial, this.point(event));
+    if (!cancelled && this.pointer.tool === 'eraser') {
+      this.erase(this.point(event), false);
+      if (this.inkTools.eraser.mode === 'lasso') {
+        this.pages[this.page] = this.inkTools.erase(this.currentStrokes, this.pointer.path,
+          this.pointer.last, this.ink.clientWidth, this.ink.clientHeight, this.zoom, this.pointer.stylus);
+      }
+    }
     this.finishPointer(cancelled);
   }
 
@@ -335,18 +487,13 @@ export class Reader {
     const active = this.pointer;
     if (!active) return;
     this.pointer = null;
-    if (this.ink.hasPointerCapture(active.id)) this.ink.releasePointerCapture(active.id);
+    if (this.ink?.hasPointerCapture(active.id)) this.ink.releasePointerCapture(active.id);
     if (active.tool === 'select' && cancelled) this.clearSelection();
     if (cancelled) this.pages[this.page] = active.before;
     else if (this.draft) this.pages[this.page] = [...active.before, this.draft];
     this.draft = null;
-    if (this.currentStrokes !== active.before && !cancelled) {
-      const history = this.getHistory();
-      history.undo.push(active.before);
-      if (history.undo.length > 60) history.undo.shift();
-      history.redo.length = 0;
-      this.persist();
-    }
+    if (this.currentStrokes !== active.before && !cancelled) this.remember(active.before);
+    if (!cancelled && active.tool === 'eraser' && this.inkTools.eraser.returnToPen) this.setTool(this.lastPen || 'pen');
     this.paint();
     this.sync();
   }
@@ -371,12 +518,43 @@ export class Reader {
     return this.history.get(this.page);
   }
 
-  erase(point) {
-    const updated = eraseAt(this.currentStrokes, point, this.ink.clientWidth, this.ink.clientHeight);
-    if (updated.length !== this.currentStrokes.length) {
-      this.pages[this.page] = updated;
-      this.paint();
+  erase(point, repaint = true) {
+    const active = this.pointer;
+    const { mode } = this.inkTools.eraser;
+    if (mode === 'lasso') {
+      if (active.last.x !== point.x || active.last.y !== point.y) active.path.push(point);
+    } else {
+      const { clientWidth: width, clientHeight: height } = this.ink;
+      const distance = Math.hypot((point.x - active.last.x) * width, (point.y - active.last.y) * height);
+      const radius = Math.min(this.inkTools.radius(active.last, active.stylus), this.inkTools.radius(point, active.stylus));
+      const steps = Math.max(1, Math.ceil(distance / Math.max(2, radius * .6)));
+      let strokes = this.currentStrokes;
+      for (let i = 1; i <= steps && strokes.length; i++) {
+        const p = mixPoint(active.last, point, i / steps);
+        strokes = this.inkTools.erase(strokes, active.path, p, width, height, this.zoom, active.stylus);
+      }
+      if (strokes !== this.currentStrokes) this.pages[this.page] = strokes;
     }
+    active.last = point;
+    if (repaint) this.paint();
+  }
+
+  remember(before) {
+    const history = this.getHistory();
+    history.undo.push(before);
+    if (history.undo.length > 60) history.undo.shift();
+    history.redo.length = 0;
+    this.persist();
+  }
+
+  clearPageInk() {
+    if (!this.currentStrokes.length) return;
+    this.finishPointer(true);
+    const before = this.currentStrokes;
+    this.pages[this.page] = [];
+    this.remember(before);
+    this.paint();
+    this.sync();
   }
 
   travelHistory(from, to) {
@@ -390,8 +568,29 @@ export class Reader {
     this.sync();
   }
 
-  paint() {
-    paintStrokes(this.ink, this.currentStrokes, this.zoom, this.draft);
+  paint(surface = this.currentSurface) {
+    if (!surface?.ink) return;
+    const current = surface === this.currentSurface;
+    paintStrokes(surface.ink, this.pages[surface.number] || EMPTY, this.zoom, current ? this.draft : null);
+    const active = current && this.pointer;
+    if (active?.tool !== 'eraser') return;
+    const canvas = surface.ink;
+    const ctx = canvas.getContext('2d');
+    const scale = canvas.width / canvas.clientWidth;
+    ctx.save();
+    ctx.strokeStyle = '#506955';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.setLineDash([4 * scale, 3 * scale]);
+    ctx.beginPath();
+    if (this.inkTools.eraser.mode === 'lasso') {
+      for (const p of active.path) ctx.lineTo(p.x * canvas.width, p.y * canvas.height);
+      ctx.closePath();
+    } else {
+      const p = active.last;
+      ctx.arc(p.x * canvas.width, p.y * canvas.height, this.inkTools.radius(p, active.stylus) * scale, 0, 2 * Math.PI);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   persist() {
@@ -413,7 +612,7 @@ export class Reader {
     if (this.tool === 'native') {
       const selection = window.getSelection();
       const text = selection?.toString().trim();
-      if (!text || !this.textLayer.contains(selection.anchorNode) || !this.textLayer.contains(selection.focusNode)) {
+      if (!text || !this.textLayer?.contains(selection.anchorNode) || !this.textLayer.contains(selection.focusNode)) {
         this.notify('请先长按或拖动选中课本文字。');
         return;
       }

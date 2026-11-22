@@ -12,9 +12,17 @@
 
 ## 使用方式
 
-- 横屏同时显示左侧课本和右侧问答。竖屏通过顶部的「课本」「问答」切换。
+- 横屏拖动中间的分隔线调整课本和问答的宽度，竖屏通过顶部按钮切换。
 - 点「导入 PDF」打开系统文件选择器。课本、批注和问答保存在应用空间。
+- 用手指上下滚动连续页面，用触控笔在露出的任意一页批注。点击画笔或橡皮可以调笔触。默认关闭「允许手指书写」，以便手指滚动。
+- 「保存 PDF」可把所有页面的批注随 PDF 保存，也可上传到设置的飞书云盘文件夹。应用内单次云盘上传上限为 20 MB，飞书应用需开通 `drive:file:upload`。
 - 点「设置」填写 DeepSeek 凭据，展开「飞书云文档 → 如何接入飞书」查看云文档授权步骤。
 - 用「问答录 → 保存 Word」选择保存在平板上的位置。
 
-工程 ZIP 用于在 DevEco Studio 构建。调试签名的 HAP 可通过 USB 安装到签名覆盖的设备。如果要通过应用市场向指定用户分发，可使用 AppGallery Connect 的开放式测试。[华为开放式测试](https://developer.huawei.com/consumer/cn/agconnect/open-test)
+## 分享给其他鸿蒙用户
+
+工程 ZIP 可在 DevEco Studio 打开。调试签名的 HAP 可通过 USB 安装到签名覆盖的设备。
+
+在 DevEco Studio 26.0 或更高版本打开工程，选择 `Build → Build Hap(s)/APP(s) → Build APP(s)` 生成 Release APP，然后选择 `Build → Upload Product → Testing Only`。登录已实名的华为开发者账号，关联或创建讲课台应用，并在上传时使用云管理证书签名。[华为发布应用说明](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ide-publish-app/)
+
+在 AppGallery Connect 的应用测试中创建邀请测试，勾选生成分享链接。审核通过后即可把邀请链接发给其他华为平板用户。[华为邀请测试说明](https://developer.huawei.com/consumer/cn/doc/app/agc-help-appgallery-release-testapp-0000002258174266/)

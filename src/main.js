@@ -1,8 +1,9 @@
 import './styles.css';
 import { Reader } from './reader.js';
 import { getBook, listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
-import { getConfiguration, getConnections, saveConnections, sendToFeishu, streamAnswer } from './api.js';
+import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer } from './api.js';
 import { formatDate, sourceLabel } from './records.js';
+import { installDivider } from './layout.js';
 
 const $ = (id) => document.getElementById(id);
 const sample = { id: 'sample', title: '函数与图像', sample: true };
@@ -435,6 +436,35 @@ function rememberExport(item) {
   saveState('feishuExports', state.exports).catch(() => {});
 }
 
+async function exportPdf(cloud) {
+  const localButton = $('pdf-save-local');
+  const cloudButton = $('pdf-save-cloud');
+  const output = $('pdf-save-status');
+  const link = $('pdf-cloud-link');
+  localButton.disabled = cloudButton.disabled = true;
+  output.textContent = '正在合成带批注的 PDF…';
+  link.hidden = true;
+  try {
+    const { annotatedFilename, buildAnnotatedPdf, savePdfOnDevice } = await import('./pdf-export.js');
+    const filename = annotatedFilename(reader.book.title);
+    const blob = await buildAnnotatedPdf(reader);
+    if (cloud) {
+      output.textContent = '正在上传 PDF 到飞书…';
+      const result = await sendPdfToFeishu(filename, blob);
+      link.href = result.url;
+      link.hidden = false;
+      output.textContent = '批注 PDF 已上传到设置中的飞书文件夹。';
+    } else {
+      const saved = await savePdfOnDevice(blob, filename);
+      output.textContent = saved ? '已保存批注 PDF。' : '';
+    }
+  } catch (error) {
+    output.textContent = error.message;
+  } finally {
+    localButton.disabled = cloudButton.disabled = false;
+  }
+}
+
 for (const target of document.querySelectorAll('.mobile-tabs button')) target.onclick = () => showPanel(target.dataset.panel);
 for (const target of document.querySelectorAll('[data-close]')) target.onclick = () => target.closest('dialog').close();
 $('pdf-open').onclick = () => $('pdf-file').click();
@@ -446,6 +476,18 @@ $('pdf-file').onchange = (event) => {
   importBook(file).catch(failure);
 };
 $('settings-open').onclick = openSettings;
+$('pdf-export').onclick = () => {
+  $('pdf-save-status').textContent = '';
+  $('pdf-cloud-link').hidden = true;
+  $('pdf-save-dialog').showModal();
+};
+$('pdf-save-close').onclick = () => $('pdf-save-dialog').close();
+$('pdf-save-local').onclick = () => exportPdf(false);
+$('pdf-save-cloud').onclick = () => exportPdf(true);
+$('pdf-cloud-setup').onclick = () => {
+  $('pdf-save-dialog').close();
+  openSettings('feishu');
+};
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   const trim = (id) => $(id).value.trim();
@@ -480,6 +522,7 @@ $('teach-next').onclick = () => teach('请接着上一页，讲解当前页的�
 for (const target of document.querySelectorAll('[data-suggest]')) target.onclick = () => teach(target.dataset.suggest);
 
 reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
+installDivider();
 if (import.meta.env.MODE === 'harmony') $('export-docx').textContent = '保存 Word';
 async function initialize() {
   refreshConfiguration();

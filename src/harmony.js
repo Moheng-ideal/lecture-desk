@@ -1,4 +1,5 @@
 import { handleApi } from '../server/api.mjs';
+import { blobBase64 } from './api.js';
 
 const pending = new Map();
 const events = 'lecture-desk-native';
@@ -31,10 +32,15 @@ document.addEventListener('click', (event) => {
 
 async function fetchFromHarmony(url, { headers, body, signal }) {
   const native = await bridge();
+  const requestHeaders = new Headers(headers);
+  if (body instanceof FormData) {
+    const encoded = new Response(body);
+    requestHeaders.set('content-type', encoded.headers.get('content-type'));
+    body = await blobBase64(await encoded.blob());
+  }
   if (signal?.aborted) throw signal.reason;
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
-    const requestHeaders = new Headers(headers);
     let controller;
     let status;
     let contentType;
@@ -90,7 +96,7 @@ async function fetchFromHarmony(url, { headers, body, signal }) {
     });
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      if (!native.startHttp(id, url, body, requestHeaders.get('authorization') || '')) {
+      if (!native.startHttp(id, url, body, requestHeaders.get('authorization') || '', requestHeaders.get('content-type') || 'application/json')) {
         stop(new Error('鸿蒙应用无法处理该请求。'));
       }
     } catch (error) { stop(error); }
@@ -106,23 +112,19 @@ export async function requestFromHarmony(path, options = {}) {
 
 export async function saveHarmonyDocument(filename, blob) {
   const native = await bridge();
-  const base64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
+  if (blob.size > 100 * 1024 * 1024) throw new Error('文件超过 100 MB，无法通过应用保存。');
+  const base64 = await blobBase64(blob);
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
     pending.set(id, ({ kind }) => {
       pending.delete(id);
-      if (kind === 'error') reject(new Error('Word 保存失败。'));
+      if (kind === 'error') reject(new Error('文件保存失败。'));
       else resolve(kind === 'saved');
     });
     try {
-      if (!native.saveWord(id, filename, base64)) {
+      if (!native.saveDocument(id, filename, base64)) {
         pending.delete(id);
-        reject(new Error('应用无法保存此 Word 文件。'));
+        reject(new Error('应用无法保存此文件。'));
       }
     } catch (error) {
       pending.delete(id);

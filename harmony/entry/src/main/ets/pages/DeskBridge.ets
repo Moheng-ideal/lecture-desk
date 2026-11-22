@@ -33,6 +33,8 @@ const endpoints: string[] = [
   'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
   'https://open.feishu.cn/open-apis/docx/v1/documents',
 ];
+const pdfUploadUrl: string = 'https://open.feishu.cn/open-apis/drive/v1/files/upload_all';
+const multipartType: RegExp = /^multipart\/form-data; boundary=[A-Za-z0-9-]{1,80}$/;
 
 export class DeskBridge {
   private controller: webview.WebviewController;
@@ -55,18 +57,25 @@ export class DeskBridge {
     } catch { /* The app page may already be closed. */ }
   }
 
-  startHttp(id: string, url: string, body: string, authorization: string): boolean {
+  startHttp(id: string, url: string, body: string, authorization: string, contentType: string): boolean {
+    const upload = url === pdfUploadUrl;
+    const allowed = upload ? multipartType.test(contentType) : endpoints.includes(url) || feishuBlocks.test(url);
     if (!requestId.test(id) || this.requests.has(id) || this.requests.size >= 6 ||
-      body.length > 4000000 || !body.length || authorization.length > 5000 ||
-      /[\r\n]/.test(authorization) || (!endpoints.includes(url) && !feishuBlocks.test(url))) {
+      body.length > (upload ? 28000000 : 4000000) || !body.length || authorization.length > 5000 ||
+      /[\r\n]/.test(authorization) || !allowed) {
       return false;
     }
     const client = http.createHttp();
     const operation = new RequestState(client);
     this.requests.set(id, operation);
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = { 'Content-Type': upload ? contentType : 'application/json' };
     if (authorization) headers['Authorization'] = authorization;
     try {
+      let payload: string | ArrayBuffer = body;
+      if (upload) {
+        const decoded = this.base64.decodeSync(body);
+        payload = decoded.buffer.slice(decoded.byteOffset, decoded.byteOffset + decoded.byteLength);
+      }
       client.on('headersReceive', (value: Object) => {
         if (this.requests.has(id)) this.send(id, 'headers', JSON.stringify(value));
       });
@@ -82,7 +91,7 @@ export class DeskBridge {
       client.requestInStream(url, {
         method: http.RequestMethod.POST,
         header: headers,
-        extraData: body,
+        extraData: payload,
         usingCache: false,
         connectTimeout: 12000,
         readTimeout: 110000,
@@ -115,19 +124,19 @@ export class DeskBridge {
     for (const id of this.requests.keys()) this.cancelHttp(id);
   }
 
-  saveWord(id: string, name: string, data: string): boolean {
-    if (!requestId.test(id) || this.saving || data.length > 16000000 ||
-      !name.endsWith('.docx') || name.length > 130 || /[<>:"/\\|?*]/.test(name)) return false;
+  saveDocument(id: string, name: string, data: string): boolean {
+    if (!requestId.test(id) || this.saving || data.length > 139810136 ||
+      !/\.(docx|pdf)$/.test(name) || name.length > 240 || /[<>:"/\\|?*\x00-\x1f]/.test(name)) return false;
     this.saving = true;
-    this.writeWord(id, name, data).finally(() => { this.saving = false; });
+    this.writeDocument(id, name, data).finally(() => { this.saving = false; });
     return true;
   }
 
-  private async writeWord(id: string, name: string, data: string): Promise<void> {
+  private async writeDocument(id: string, name: string, data: string): Promise<void> {
     try {
       const options = new picker.DocumentSaveOptions();
       options.newFileNames = [name];
-      options.fileSuffixChoices = ['Word (*.docx)|.docx'];
+      options.fileSuffixChoices = [name.endsWith('.pdf') ? 'PDF (*.pdf)|.pdf' : 'Word (*.docx)|.docx'];
       const uris = await new picker.DocumentViewPicker(this.getAbility()).save(options);
       if (!uris.length) {
         this.send(id, 'cancelled');

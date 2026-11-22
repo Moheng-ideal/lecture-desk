@@ -27,6 +27,7 @@
       <div class="book-bar">
         <div class="file-info"><span class="file-mark" aria-hidden="true">PDF</span><div><strong id="book-title">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
         <div class="book-actions">
+          <button type="button" id="pdf-export" class="quiet" disabled>保存 PDF</button>
           <button type="button" id="library-open" class="quiet">书架</button>
           <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入 PDF</button>
           <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
@@ -39,17 +40,44 @@
           <button type="button" data-tool="select" aria-pressed="false" title="拖动框选文字，或用浏览器选中文字">选文</button>
           <button type="button" data-tool="pen" aria-pressed="false" title="圆珠笔">批注笔</button>
           <button type="button" data-tool="marker" aria-pressed="false" title="荧光笔">荧光笔</button>
-          <button type="button" data-tool="eraser" aria-pressed="false" title="按笔画擦除">橡皮</button>
+          <button type="button" data-tool="eraser" aria-pressed="false">橡皮</button>
         </div>
-        <div class="tool-group ink-tools" aria-label="颜色与笔宽">
-          <label class="color-control" title="笔的颜色"><span class="sr-only">笔的颜色</span><input id="ink-color" type="color" value="#ba472d"></label>
-          <label title="笔的宽度"><span class="sr-only">笔的宽度</span><select id="ink-size"><option value="2">细</option><option value="4" selected>中</option><option value="8">粗</option></select></label>
-        </div>
+        <button type="button" id="ink-config" class="quiet" aria-controls="ink-panel" aria-expanded="false">笔刷设置</button>
         <div class="tool-group history-tools">
           <button type="button" id="undo" title="撤销批注" aria-label="撤销批注" disabled>↶</button>
           <button type="button" id="redo" title="重做批注" aria-label="重做批注" disabled>↷</button>
         </div>
       </div>
+      <section id="ink-panel" class="ink-panel" aria-label="批注工具设置" hidden>
+        <header><strong id="ink-heading">笔刷</strong><button type="button" id="ink-close" aria-label="关闭批注工具设置">×</button></header>
+        <canvas id="ink-preview" width="520" height="106" aria-label="笔触预览"></canvas>
+        <div id="pen-options">
+          <div class="ink-choices" id="brush-choices" aria-label="笔刷类型">
+            <button type="button" data-brush="ball">圆珠笔</button>
+            <button type="button" data-brush="fountain">钢笔</button>
+            <button type="button" data-brush="felt">签字笔</button>
+            <button type="button" data-brush="brush">毛笔</button>
+            <button type="button" data-brush="marker">荧光笔</button>
+          </div>
+          <label class="ink-range">粗细 <output for="ink-size"></output><input id="ink-size" type="range" min="1" max="32" step="1"></label>
+          <label class="ink-range">不透明度 <output for="ink-opacity"></output><input id="ink-opacity" type="range" min="5" max="100"></label>
+          <div class="ink-swatches" id="ink-swatches" aria-label="常用颜色"></div>
+          <label class="ink-switch">自选颜色 <input id="ink-color" type="color" aria-label="自选颜色"></label>
+        </div>
+        <div id="eraser-options" hidden>
+          <div class="ink-choices" id="erase-choices" aria-label="擦除方式">
+            <button type="button" data-erase="point">点擦除</button>
+            <button type="button" data-erase="stroke">笔划擦除</button>
+            <button type="button" data-erase="lasso">圈选擦除</button>
+          </div>
+          <label class="ink-range">擦除直径 <output for="erase-size"></output><input id="erase-size" type="range" min="6" max="96"></label>
+          <label class="ink-switch">仅擦除荧光笔 <input id="erase-marker" type="checkbox"></label>
+          <label class="ink-switch">压感橡皮擦 <input id="erase-pressure" type="checkbox"></label>
+          <label class="ink-range">压感灵敏度 <output for="erase-sensitivity"></output><input id="erase-sensitivity" type="range" min="0" max="100"></label>
+          <label class="ink-switch">擦完回到画笔 <input id="erase-return" type="checkbox"></label>
+          <button type="button" id="erase-page" class="outline">清空本页批注</button>
+        </div>
+      </section>
 
       <div class="selection-bar" id="selection-bar" hidden>
         <span id="selection-note">框选课本文字，扫描版可直接识字。</span>
@@ -58,12 +86,15 @@
       </div>
 
       <div class="reader" id="reader" tabindex="0" aria-label="PDF 页面">
-        <div id="page-wrap" class="paper" data-tool="read">
-          <canvas id="pdf-canvas" aria-label="课本页面"></canvas>
-          <div id="text-layer" class="textLayer" aria-label="PDF 文字"></div>
-          <canvas id="ink-canvas" aria-label="手写批注"></canvas>
-          <div id="selection-rect" hidden></div>
-        </div>
+        <div id="page-stack"></div>
+        <template id="page-template">
+          <section class="paper">
+            <canvas class="pdf-canvas" aria-label="课本页面"></canvas>
+            <div class="textLayer" aria-label="PDF 文字"></div>
+            <canvas class="ink-canvas" aria-label="手写批注"></canvas>
+            <div class="selection-rect" hidden></div>
+          </section>
+        </template>
         <p id="reader-status" class="reader-status" role="status">正在打开课本…</p>
       </div>
 
@@ -82,6 +113,7 @@
         </div>
       </footer>
     </section>
+    <div id="pane-divider" role="separator" aria-label="调整课本和问答区宽度" aria-orientation="vertical" tabindex="0" aria-valuemin="35" aria-valuemax="75" aria-valuenow="61"></div>
     <section class="chat-pane" aria-label="询问区">
       <header class="chat-bar">
         <div class="assistant-mark" aria-hidden="true">✦</div>
@@ -113,6 +145,16 @@
       </form>
     </section>
   </main>
+  <dialog id="pdf-save-dialog">
+    <header><h2>保存批注 PDF</h2><button type="button" id="pdf-save-close" aria-label="关闭">×</button></header>
+    <div class="pdf-save-body">
+      <p>把本书的手写批注一起保存，保留原 PDF 的文字层。</p>
+      <div class="pdf-save-actions"><button type="button" id="pdf-save-local" class="accent">保存到本机</button><button type="button" id="pdf-save-cloud" class="outline">上传飞书云盘</button></div>
+      <p id="pdf-save-status" role="status"></p>
+      <a id="pdf-cloud-link" target="_blank" rel="noopener noreferrer" hidden>打开飞书目标文件夹</a>
+      <button type="button" id="pdf-cloud-setup" class="quiet">飞书接入设置</button>
+    </div>
+  </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
 
   <dialog id="library">
@@ -134,7 +176,7 @@
             <summary>如何接入飞书</summary>
             <ol>
               <li>在开发者后台选择「创建企业自建应用」。<a href="https://open.feishu.cn/app" target="_blank" rel="noopener noreferrer">打开飞书开放平台</a></li>
-              <li>在应用的「权限管理」中开通「创建及编辑新版文档」（<code>docx:document</code>），在「添加应用能力」中启用机器人，再到「版本管理与发布」发布应用。</li>
+              <li>在应用的「权限管理」中开通「创建及编辑新版文档」（<code>docx:document</code>）。上传批注 PDF 还需要「上传文件」（<code>drive:file:upload</code>）。启用机器人，并在「版本管理与发布」发布权限变更。</li>
               <li>在飞书建一个内部群，把应用加为群机器人。在云空间找到问答录要存入的文件夹，将它分享给该群，权限设为「可管理」。<a href="https://www.feishu.cn/content/383321056779" target="_blank" rel="noopener noreferrer">查看飞书授权说明</a></li>
               <li>从应用的「凭证与基础信息」复制 App ID 和 App Secret。打开目标文件夹，从浏览器地址栏复制带有 <code>/drive/folder/</code> 的完整链接。</li>
             </ol>

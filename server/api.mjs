@@ -2,6 +2,7 @@ import { recordSections, sourceLabel } from '../src/records.js';
 
 const DEEPSEEK = 'https://api.deepseek.com/chat/completions';
 const FEISHU = 'https://open.feishu.cn/open-apis';
+const PDF_LIMIT = 20 * 1024 * 1024;
 const MODEL = 'deepseek-flash';
 const encoder = new TextEncoder();
 const TEACHER = [
@@ -169,6 +170,38 @@ async function callFeishu(endpoint, payload, fetcher, token) {
   return result.data || result;
 }
 
+async function uploadFeishuPdf(body, credentials, fetcher) {
+  const { appId, secret, folder } = credentials;
+  if (!appId || !secret || !folder) throw new HttpError(422, '请先在设置中连接飞书应用并填写目标文件夹链接。');
+  const destination = folderFromUrl(folder);
+  const name = str(body.name, 240, 'PDF 文件名');
+  if (!/\.pdf$/i.test(name) || /[<>:"/\\|?*\x00-\x1f]/.test(name)) throw new HttpError(400, 'PDF 文件名无效。');
+  if (typeof body.data !== 'string') throw new HttpError(400, 'PDF 文件内容无效。');
+  if (body.data.length > Math.ceil(PDF_LIMIT / 3) * 4) throw new HttpError(413, '单次上传上限为 20 MB，请先保存到本机。');
+  let decoded;
+  try { decoded = atob(body.data); } catch { throw new HttpError(400, 'PDF 文件内容无效。'); }
+  if (!decoded.slice(0, 1024).includes('%PDF-')) throw new HttpError(400, 'PDF 文件内容无效。');
+  if (decoded.length > PDF_LIMIT) throw new HttpError(413, '单次上传上限为 20 MB，请先保存到本机。');
+  const auth = await callFeishu('/auth/v3/tenant_access_token/internal', { app_id: appId, app_secret: secret }, fetcher);
+  if (!auth.tenant_access_token) throw new HttpError(502, '飞书没有返回应用访问凭据。');
+  const form = new FormData();
+  form.set('file_name', name);
+  form.set('parent_type', 'explorer');
+  form.set('parent_node', destination.token);
+  form.set('size', String(decoded.length));
+  form.set('file', new Blob([Uint8Array.from(decoded, (byte) => byte.charCodeAt(0))], { type: 'application/pdf' }), name);
+  const response = await fetcher(FEISHU + '/drive/v1/files/upload_all', {
+    method: 'POST', headers: { Authorization: `Bearer ${auth.tenant_access_token}` },
+    body: form, signal: AbortSignal.timeout(95000),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.code !== 0 || !/^[A-Za-z0-9]{1,100}$/.test(result.data?.file_token || '')) {
+    const code = Number.isSafeInteger(result.code) && result.code ? `错误码 ${result.code}` : `HTTP ${response.status}`;
+    throw new HttpError(502, `飞书上传失败（${code}）。请检查文件上传权限和文件夹权限。`);
+  }
+  return json({ url: `${destination.origin}/drive/folder/${destination.token}` });
+}
+
 function feishuBlocks(records) {
   const types = { text: 2, heading1: 3, heading2: 4 };
   const block = (kind, content) => {
@@ -268,11 +301,12 @@ export async function handleApi(request, env = {}, { hosted = false, localApp = 
         feishu: Boolean(authorized && configured?.appId && configured?.secret && configured?.folder),
       });
     }
-    if (!['/api/chat', '/api/feishu'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
+    if (!['/api/chat', '/api/feishu', '/api/feishu-pdf'].includes(url.pathname)) throw new HttpError(404, '接口不存在。');
     if (request.method !== 'POST') throw new HttpError(405, '请求方法不受支持。');
     if (!sameOrigin) throw new HttpError(403, '请从讲课台页面发起请求。');
     if (!authorized) throw new HttpError(401, '请输入局域网访问口令。');
-    const body = await readJson(request, url.pathname === '/api/chat' ? 950000 : 4000000);
+    const limit = { '/api/chat': 950000, '/api/feishu': 4000000, '/api/feishu-pdf': Math.ceil(PDF_LIMIT / 3) * 4 + 4096 };
+    const body = await readJson(request, limit[url.pathname]);
     const supplied = canSupplyCredentials ? body.credentials : null;
     if (url.pathname === '/api/chat') {
       const key = supplied?.deepseek ? str(supplied.deepseek, 180, 'DeepSeek API Key') : configured?.deepseek;
@@ -283,6 +317,7 @@ export async function handleApi(request, env = {}, { hosted = false, localApp = 
       secret: str(supplied.feishu.secret, 180, '飞书 App Secret'),
       folder: str(supplied.feishu.folder, 400, '飞书文件夹链接'),
     } : configured || {};
+    if (url.pathname === '/api/feishu-pdf') return await uploadFeishuPdf(body, credentials, fetcher);
     return await saveFeishu(body, credentials, fetcher);
   } catch (error) {
     if (error instanceof HttpError) return json({ error: error.message, ...error.extra }, error.status);

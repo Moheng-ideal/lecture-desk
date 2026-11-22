@@ -92,3 +92,18 @@ export async function streamAnswer(data, onText, signal) {
 export async function sendToFeishu(data) {
   return (await post('feishu', data, { feishu: settings.feishu })).json();
 }
+
+export function blobBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function sendPdfToFeishu(name, blob) {
+  if (blob.size > 20 * 1024 * 1024) throw new Error('单次上传上限为 20 MB，请先保存到本机。');
+  const data = await blobBase64(blob);
+  return (await post('feishu-pdf', { name, data }, { feishu: settings.feishu })).json();
+}

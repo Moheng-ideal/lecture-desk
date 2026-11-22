@@ -55,3 +55,55 @@ test('stopping a Harmony request cancels the original native request', async () 
   await assert.rejects(response, { name: 'AbortError' });
   assert.equal(cancelled, started);
 });
+
+test('PDF upload passes a multipart file and folder token through the Harmony network bridge', async () => {
+  globalThis.FileReader = class {
+    async readAsDataURL(blob) {
+      this.result = `data:;base64,${Buffer.from(await blob.arrayBuffer()).toString('base64')}`;
+      this.onload();
+    }
+  };
+  const pdf = '%PDF-1.7\nexample';
+  const requests = [];
+  window.LectureDeskNative = {
+    startHttp(id, url, body, authorization, contentType) {
+      requests.push({ url, body, authorization, contentType });
+      const packet = url.includes('/auth/')
+        ? { code: 0, tenant_access_token: 'fixture-token' }
+        : { code: 0, data: { file_token: 'PdfToken' } };
+      queueMicrotask(() => {
+        sendEvent(id, 'headers', '{"Content-Type":"application/json"}');
+        sendEvent(id, 'status', '200');
+        sendEvent(id, 'data', Buffer.from(JSON.stringify(packet)).toString('base64'));
+        sendEvent(id, 'end');
+      });
+      return true;
+    },
+    cancelHttp() {},
+  };
+  try {
+    const result = await requestFromHarmony('/api/feishu-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: '批注.pdf', data: Buffer.from(pdf).toString('base64'),
+        credentials: { feishu: { appId: 'fixture', secret: 'fixture', folder: 'https://lesson.feishu.cn/drive/folder/FolderToken' } },
+      }),
+    });
+    assert.equal(result.status, 200);
+    assert.equal((await result.json()).url, 'https://lesson.feishu.cn/drive/folder/FolderToken');
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].url, 'https://open.feishu.cn/open-apis/drive/v1/files/upload_all');
+    assert.equal(requests[1].authorization, 'Bearer fixture-token');
+    const multipart = await new Response(Buffer.from(requests[1].body, 'base64'), {
+      headers: { 'Content-Type': requests[1].contentType },
+    }).formData();
+    assert.equal(multipart.get('parent_type'), 'explorer');
+    assert.equal(multipart.get('parent_node'), 'FolderToken');
+    assert.equal(multipart.get('file_name'), '批注.pdf');
+    assert.equal(multipart.get('size'), String(pdf.length));
+    assert.equal(await multipart.get('file').text(), pdf);
+  } finally {
+    delete globalThis.FileReader;
+  }
+});
