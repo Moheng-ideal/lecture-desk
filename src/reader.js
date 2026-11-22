@@ -63,6 +63,7 @@ export class Reader {
     this.page = 1;
     this.pages = {};
     this.history = new Map();
+    this.bookHistories = new Map();
     this.revision = 0;
     this.openRevision = 0;
     this.inkTools = new InkTools(this);
@@ -113,6 +114,10 @@ export class Reader {
       this.scrollFrame = requestAnimationFrame(() => {
         this.scrollFrame = null;
         this.pageAtScroll();
+        if (!this.restoring && this.book) {
+          clearTimeout(this.scrollSave);
+          this.scrollSave = setTimeout(() => this.persist(), 250);
+        }
       });
     }, { passive: true });
     let resize;
@@ -139,6 +144,10 @@ export class Reader {
   set fingerInk(value) { this.reader.dataset.fingerInk = String(Boolean(value)); }
 
   async open(book) {
+    if (this.book) {
+      clearTimeout(this.scrollSave);
+      this.persist();
+    }
     const revision = ++this.openRevision;
     this.loading?.destroy().catch(() => {});
     this.showStatus('正在打开课本…');
@@ -177,8 +186,11 @@ export class Reader {
       this.pdf = pdf;
       this.book = book;
       this.pages = prior?.pages || {};
+      this.savedOffset = Number(prior?.offset) || 0;
+      this.zoom = clamp(Number(prior?.zoom) || 1, .75, 2.5);
       this.page = clamp(prior?.page || 1, 1, pdf.numPages);
-      this.history.clear();
+      if (!this.bookHistories.has(book.id)) this.bookHistories.set(book.id, new Map());
+      this.history = this.bookHistories.get(book.id);
       const fallback = first.getViewport({ scale: 1 });
       this.lastWidth = this.availableWidth() || this.lastWidth || 560;
       const list = document.createDocumentFragment();
@@ -192,10 +204,13 @@ export class Reader {
         return surface;
       });
       this.stack.replaceChildren(list);
+      this.restoring = true;
       for (const surface of this.surfaces) this.pageObserver.observe(surface.paper);
-      this.scrollToPage(this.currentSurface);
+      const surface = this.currentSurface;
+      this.scrollToPage(surface, prior?.offset);
       this.sync();
-      await this.render(this.currentSurface);
+      await this.render(surface);
+      if (revision === this.openRevision) this.scrollToPage(surface, prior?.offset);
       return revision === this.openRevision;
     } catch (error) {
       if (revision !== this.openRevision) return false;
@@ -203,6 +218,7 @@ export class Reader {
       this.showStatus(this.pdf ? '' : '打开失败，请尝试另一份 PDF。');
       throw new Error(`无法打开课本。 ${error.message || ''}`);
     } finally {
+      if (revision === this.openRevision) this.restoring = false;
       if (this.loading === task) this.loading = null;
     }
   }
@@ -220,8 +236,9 @@ export class Reader {
     return scale;
   }
 
-  scrollToPage(surface) {
-    this.reader.scrollTop = surface.paper.offsetTop - parseFloat(getComputedStyle(this.reader).paddingTop);
+  scrollToPage(surface, offset = 0) {
+    const padding = parseFloat(getComputedStyle(this.reader).paddingTop);
+    this.reader.scrollTop = surface.paper.offsetTop - padding + (Number(offset) || 0) * surface.paper.offsetHeight;
   }
 
   selectPage(surface, clear = true) {
@@ -234,7 +251,7 @@ export class Reader {
   }
 
   pageAtScroll() {
-    if (this.pointer || !this.pdf || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
+    if (this.restoring || this.pointer || !this.pdf || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
     const reader = this.reader.getBoundingClientRect();
     const focus = reader.top + Math.min(120, reader.height * .22);
     let best;
@@ -398,6 +415,7 @@ export class Reader {
     if (!this.pdf) return;
     this.zoom = clamp(value, .75, 2.5);
     this.reflow();
+    this.persist();
   }
 
   setTool(tool) {
@@ -518,6 +536,10 @@ export class Reader {
     return this.history.get(this.page);
   }
 
+  discardHistory(bookId) {
+    if (bookId !== this.book?.id) this.bookHistories.delete(bookId);
+  }
+
   erase(point, repaint = true) {
     const active = this.pointer;
     const { mode } = this.inkTools.eraser;
@@ -594,7 +616,12 @@ export class Reader {
   }
 
   persist() {
-    saveState(`reader:${this.book.id}`, { page: this.page, pages: { ...this.pages } })
+    const anchor = this.currentSurface?.paper;
+    const padding = parseFloat(getComputedStyle(this.reader).paddingTop);
+    const offset = anchor?.offsetHeight
+      ? (this.reader.scrollTop + padding - anchor.offsetTop) / anchor.offsetHeight : this.savedOffset || 0;
+    this.savedOffset = offset;
+    saveState(`reader:${this.book.id}`, { page: this.page, offset, zoom: this.zoom, pages: { ...this.pages } })
       .catch(() => this.notify('本机存储写入失败，本次批注可能无法保留。'));
   }
 

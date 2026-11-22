@@ -43,7 +43,7 @@ struct Index {
         .javaScriptProxy({
           object: this.native,
           name: 'LectureDeskNative',
-          methodList: ['startHttp', 'cancelHttp', 'saveDocument', 'openLink'],
+          methodList: ['startHttp', 'cancelHttp', 'saveDocument', 'openLink', 'startVoice', 'finishVoice', 'cancelVoice'],
           controller: this.controller,
         })
         // ArkWeb accepts null to pass through requests outside the bundled origin.

@@ -110,6 +110,30 @@ export async function requestFromHarmony(path, options = {}) {
   return result;
 }
 
+export async function harmonyVoice() {
+  const native = await bridge();
+  return {
+    start(id, onEvent) {
+      pending.set(id, ({ kind, value }) => {
+        if (kind === 'voice-done' || kind === 'voice-error') pending.delete(id);
+        onEvent(kind, value);
+      });
+      try {
+        if (native.startVoice(id)) return;
+        throw new Error('无法开始鸿蒙语音输入。');
+      } catch (error) {
+        pending.delete(id);
+        throw error;
+      }
+    },
+    finish: (id) => native.finishVoice(id),
+    cancel(id) {
+      pending.delete(id);
+      native.cancelVoice(id);
+    },
+  };
+}
+
 export async function saveHarmonyDocument(filename, blob) {
   const native = await bridge();
   if (blob.size > 100 * 1024 * 1024) throw new Error('文件超过 100 MB，无法通过应用保存。');

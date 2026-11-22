@@ -4,7 +4,7 @@ import { test } from 'node:test';
 globalThis.window = new EventTarget();
 globalThis.document = new EventTarget();
 globalThis.location = new URL('https://lecture-desk.invalid');
-const { requestFromHarmony } = await import('../src/harmony.js');
+const { requestFromHarmony, harmonyVoice } = await import('../src/harmony.js');
 
 const sendEvent = (id, kind, value) => window.dispatchEvent(
   new CustomEvent('lecture-desk-native', { detail: { id, kind, value } }),
@@ -106,4 +106,24 @@ test('PDF upload passes a multipart file and folder token through the Harmony ne
   } finally {
     delete globalThis.FileReader;
   }
+});
+
+test('cancelling voice discards late results from the previous book', async () => {
+  const cancelled = [];
+  window.LectureDeskNative = {
+    startVoice: () => true,
+    cancelVoice: (id) => cancelled.push(id),
+  };
+  const voice = await harmonyVoice();
+  const received = [];
+  const record = (...event) => received.push(event);
+  voice.start('old-book', record);
+  voice.cancel('old-book');
+  voice.start('new-book', record);
+  sendEvent('old-book', 'voice-final', '上一册的内容');
+  sendEvent('new-book', 'voice-final', '当前课本的内容');
+  sendEvent('new-book', 'voice-done', '');
+  sendEvent('new-book', 'voice-final', '迟到的内容');
+  assert.deepEqual(cancelled, ['old-book']);
+  assert.deepEqual(received, [['voice-final', '当前课本的内容'], ['voice-done', '']]);
 });

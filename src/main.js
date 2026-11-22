@@ -1,13 +1,19 @@
 import './styles.css';
 import { Reader } from './reader.js';
-import { getBook, listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
+import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer } from './api.js';
 import { formatDate, sourceLabel } from './records.js';
 import { installDivider } from './layout.js';
+import { installWhiteboard } from './whiteboard.js';
+import { installTheme } from './theme.js';
+import { installVoice } from './voice.js';
 
 const $ = (id) => document.getElementById(id);
 const sample = { id: 'sample', title: '函数与图像', sample: true };
 const state = { book: sample, records: [], references: [], exports: [], config: {}, failed: null };
+const drafts = new Map();
+let openBooks = [];
+const voice = installVoice();
 let reader;
 let toastTimeout;
 let changingBook;
@@ -142,27 +148,81 @@ async function refreshConfiguration() {
 }
 
 async function activateBook(book) {
+  if (changingBook) return false;
   if (state.stream) {
     feedback('请先结束当前讲解，再切换课本。');
     return false;
   }
+  const previous = state.book.id;
+  voice.cancel();
+  drafts.set(previous, { text: $('question').value, references: state.references, failed: state.failed });
   changingBook = book.id;
   syncChat();
   try {
     if (!await reader.open(book)) return false;
     state.book = book;
-    state.references = [];
-    state.failed = null;
-    $('question').value = '';
+    if (!openBooks.some(({ id }) => id === book.id)) openBooks.push(book);
+    const draft = drafts.get(book.id);
+    state.references = draft?.references || [];
+    state.failed = draft?.failed || null;
+    $('question').value = draft?.text || '';
     displayExcerpts();
     displayThread();
     status('chat-status');
+    renderBookTabs();
     saveState('activeBook', book.id).catch(() => {});
     return true;
   } finally {
     if (changingBook === book.id) changingBook = null;
     syncChat();
   }
+}
+
+function renderBookTabs() {
+  const nav = $('book-tabs');
+  const left = nav.scrollLeft;
+  const focus = nav.contains(document.activeElement);
+  let active;
+  nav.replaceChildren(...openBooks.map((book) => {
+    const selected = book.id === state.book.id;
+    const item = element('div', null, 'book-tab');
+    item.dataset.selected = String(selected);
+    const pick = button(book.title, () => {
+      showPanel('book');
+      if (!selected) activateBook(book).catch(failure);
+    });
+    pick.title = book.title;
+    pick.setAttribute('aria-current', String(selected));
+    if (selected) active = pick;
+    const close = button('×', () => closeBookTab(book.id).catch(failure));
+    close.setAttribute('aria-label', `关闭《${book.title}》标签页`);
+    item.append(pick, close);
+    return item;
+  }));
+  nav.scrollLeft = left;
+  if (focus) active?.focus({ preventScroll: true });
+  if (active) {
+    const bounds = nav.getBoundingClientRect();
+    const item = active.parentElement.getBoundingClientRect();
+    if (item.left < bounds.left) nav.scrollLeft += item.left - bounds.left;
+    if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right;
+  }
+  saveState('openBooks', openBooks.map(({ id }) => id)).catch(() => {});
+}
+
+async function closeBookTab(id) {
+  if (changingBook) return;
+  const index = openBooks.findIndex((book) => book.id === id);
+  if (index < 0) return;
+  if (id === state.book.id) {
+    const next = openBooks[index + 1] || openBooks[index - 1];
+    if (!next && id === sample.id) return;
+    if (!await activateBook(next || sample)) return;
+  }
+  openBooks = openBooks.filter((book) => book.id !== id);
+  drafts.delete(id);
+  reader.discardHistory(id);
+  renderBookTabs();
 }
 
 async function importBook(file) {
@@ -199,6 +259,10 @@ async function openLibrary() {
         if (!confirm(`从本机书架移除《${book.title}》？`)) return;
         try {
           await removeBook(book.id);
+          openBooks = openBooks.filter(({ id }) => id !== book.id);
+          drafts.delete(book.id);
+          reader.discardHistory(book.id);
+          renderBookTabs();
           await openLibrary();
         } catch (error) { failure(error); }
       }, 'quiet'));
@@ -469,6 +533,7 @@ for (const target of document.querySelectorAll('.mobile-tabs button')) target.on
 for (const target of document.querySelectorAll('[data-close]')) target.onclick = () => target.closest('dialog').close();
 $('pdf-open').onclick = () => $('pdf-file').click();
 $('library-open').onclick = () => openLibrary().catch(failure);
+$('book-tab-add').onclick = () => openLibrary().catch(failure);
 $('library-import').onclick = () => { $('library').close(); $('pdf-file').click(); };
 $('pdf-file').onchange = (event) => {
   const [file] = event.target.files;
@@ -512,6 +577,7 @@ $('export-feishu').onclick = exportFeishu;
 $('stop').onclick = () => state.stream?.abort();
 $('ask').onsubmit = (event) => {
   event.preventDefault();
+  voice.cancel();
   ask($('question').value).catch(failure);
 };
 $('question').onkeydown = (event) => {
@@ -523,20 +589,26 @@ for (const target of document.querySelectorAll('[data-suggest]')) target.onclick
 
 reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
 installDivider();
+installTheme();
+installWhiteboard({ notify: feedback, onOpen: voice.cancel });
 if (import.meta.env.MODE === 'harmony') $('export-docx').textContent = '保存 Word';
 async function initialize() {
   refreshConfiguration();
-  const [bookId, records, fingerInk, exports] = await Promise.all([
+  const [bookId, records, fingerInk, exports, tabIds, books] = await Promise.all([
     readState('activeBook').catch(() => null),
     listRecords().catch(() => []),
     readState('fingerInk').catch(() => false),
     readState('feishuExports').catch(() => []),
+    readState('openBooks').catch(() => []),
+    listBooks().catch(() => []),
   ]);
   reader.fingerInk = fingerInk;
   state.exports = exports || [];
   state.records = records.sort((a, b) => a.date.localeCompare(b.date));
   $('record-count').textContent = state.records.length;
-  const book = bookId && bookId !== sample.id ? await getBook(bookId).catch(() => null) : sample;
+  const available = new Map([sample, ...books].map((item) => [item.id, item]));
+  openBooks = Array.isArray(tabIds) ? [...new Set(tabIds)].map((id) => available.get(id)).filter(Boolean) : [];
+  const book = available.get(bookId) || openBooks[0] || sample;
   try { await activateBook(book || sample); }
   catch (error) {
     failure(error);

@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { util } from '@kit.ArkTS';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
+import { DeskSpeech } from './DeskSpeech';
 
 class BridgeEvent {
   id: string;
@@ -42,10 +43,12 @@ export class DeskBridge {
   private requests: Map<string, RequestState> = new Map();
   private base64: util.Base64Helper = new util.Base64Helper();
   private saving: boolean = false;
+  private speech: DeskSpeech;
 
   constructor(controller: webview.WebviewController, getAbility: () => common.UIAbilityContext) {
     this.controller = controller;
     this.getAbility = getAbility;
+    this.speech = new DeskSpeech(getAbility, (id: string, kind: string, value: string) => this.send(id, kind, value));
   }
 
   private send(id: string, kind: string, value: string = ''): void {
@@ -122,7 +125,12 @@ export class DeskBridge {
 
   stopAll(): void {
     for (const id of this.requests.keys()) this.cancelHttp(id);
+    this.speech.cancel();
   }
+
+  startVoice(id: string): boolean { return this.speech.start(id); }
+  finishVoice(id: string): void { this.speech.finish(id); }
+  cancelVoice(id: string): void { this.speech.cancel(id); }
 
   saveDocument(id: string, name: string, data: string): boolean {
     if (!requestId.test(id) || this.saving || data.length > 139810136 ||

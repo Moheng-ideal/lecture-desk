@@ -18,6 +18,7 @@
       <button type="button" data-panel="chat" aria-pressed="false">问答</button>
     </nav>
     <div class="header-actions">
+      <button type="button" id="board-open" class="outline" aria-controls="class-board" aria-expanded="false">白板</button>
       <button type="button" id="settings-open" class="quiet"><span aria-hidden="true">⚙</span> 设置</button>
       <button type="button" id="records-open" class="accent">问答录 <span id="record-count">0</span></button>
     </div>
@@ -32,6 +33,10 @@
           <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入 PDF</button>
           <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
         </div>
+      </div>
+      <div class="book-tabs-bar">
+        <nav id="book-tabs" class="book-tabs" aria-label="已打开的课本"></nav>
+        <button type="button" id="book-tab-add" class="quiet" title="从书架打开" aria-label="从书架打开更多课本">＋</button>
       </div>
 
       <div class="tools" aria-label="课本工具栏">
@@ -136,14 +141,32 @@
         <div id="excerpts" aria-label="本次引用"></div>
         <label class="sr-only" for="question">向讲解助手提问</label>
         <textarea id="question" rows="2" maxlength="6000" placeholder="输入你的问题，或先从左侧引用课本…"></textarea>
+        <p id="voice-status" role="status" hidden></p>
         <p id="chat-status" role="status" hidden></p>
         <div class="composer-actions">
           <button type="button" id="teach-next" class="quiet">下一页开讲</button>
+          <button type="button" id="voice-input" class="outline" aria-pressed="false">语音</button>
           <button type="button" id="stop" class="outline" hidden>停止</button>
           <button type="submit" id="send" class="accent">发送</button>
         </div>
       </form>
     </section>
+    <aside id="class-board" aria-label="教学白板" hidden>
+      <header class="board-head">
+        <h2>白板</h2>
+        <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
+      </header>
+      <div class="board-tools" aria-label="白板工具">
+        <button type="button" data-board-tool="pen" aria-pressed="true">笔</button>
+        <button type="button" data-board-tool="eraser" aria-pressed="false">橡皮</button>
+        <input type="color" id="board-color" value="#263a35" aria-label="白板笔颜色">
+        <label class="sr-only" for="board-size">白板笔粗细</label>
+        <select id="board-size"><option value="3">细</option><option value="5" selected>中</option><option value="10">粗</option></select>
+        <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
+        <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+      </div>
+      <div id="board-surface"><canvas id="board-ink" aria-label="白板画布"></canvas></div>
+    </aside>
   </main>
   <dialog id="pdf-save-dialog">
     <header><h2>保存批注 PDF</h2><button type="button" id="pdf-save-close" aria-label="关闭">×</button></header>
@@ -164,9 +187,15 @@
   </dialog>
 
   <dialog id="settings">
-    <header><h2>连接设置</h2><button type="button" data-close aria-label="关闭">×</button></header>
+    <header><h2>设置</h2><button type="button" data-close aria-label="关闭">×</button></header>
     <form id="settings-form" autocomplete="off">
       <div class="dialog-body settings-fields">
+        <fieldset id="theme-options" class="theme-options">
+          <legend>界面主题</legend>
+          <label><input type="radio" name="desk-theme" value="paper" checked><span>暖纸</span></label>
+          <label><input type="radio" name="desk-theme" value="mist"><span>雾蓝</span></label>
+          <label><input type="radio" name="desk-theme" value="night"><span>深蓝灰</span></label>
+        </fieldset>
         <p id="configuration-hint"></p>
         <label id="pass-label" hidden>局域网访问口令<input id="access-code" type="password" maxlength="180" autocomplete="off"></label>
         <label id="credential-fields">DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
