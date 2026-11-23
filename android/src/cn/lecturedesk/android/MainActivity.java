@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     private WebView view;
     private DeskNetwork network;
     private DeskSpeech speech;
+    private DeskUpdater updater;
 
     private static class SaveJob {
         final String id;
@@ -50,6 +51,7 @@ public final class MainActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(44, 58, 49));
         network = new DeskNetwork(this);
         speech = new DeskSpeech(this);
+        updater = new DeskUpdater(this);
         view = new WebView(this);
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -104,6 +106,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == DeskUpdater.ALLOW_INSTALL || request == DeskUpdater.INSTALL_UPDATE) {
+            updater.onResult(request);
+            return;
+        }
         Uri file = result == RESULT_OK && data != null ? data.getData() : null;
         if (request == PICK_BOOK) selectedBook(file);
         if (request != SAVE_FILE || saveJob == null) return;
@@ -153,6 +159,7 @@ public final class MainActivity extends Activity {
         selectedBook(null);
         network.close();
         speech.close();
+        updater.close();
         disk.shutdown();
         setContentView(new android.widget.FrameLayout(this));
         view.destroy();
@@ -161,6 +168,10 @@ public final class MainActivity extends Activity {
 
     private final class DeskBridge {
         private final DeskCredentials credentials = new DeskCredentials(MainActivity.this);
+
+        @JavascriptInterface public void checkForUpdate() {
+            runOnUiThread(() -> { if (!destroyed) updater.check(); });
+        }
 
         @JavascriptInterface public String readDeepSeekKey() { return credentials.read(); }
         @JavascriptInterface public boolean saveDeepSeekKey(String value) { return credentials.save(value); }

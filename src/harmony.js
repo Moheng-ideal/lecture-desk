@@ -23,6 +23,12 @@ function bridge() {
   });
 }
 
+export async function checkAndroidUpdate() {
+  const native = await bridge();
+  if (typeof native.checkForUpdate !== 'function') throw new Error('此版本的安装包暂不支持应用内更新。');
+  native.checkForUpdate();
+}
+
 export async function nativeDeepSeekKey(value) {
   const native = await bridge();
   if (typeof native.readDeepSeekKey !== 'function' || typeof native.saveDeepSeekKey !== 'function') return undefined;

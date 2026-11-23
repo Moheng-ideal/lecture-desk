@@ -436,3 +436,7 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
   background: currentColor;
   vertical-align: .1em;
 }
+
+.app-version { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#settings-changelog-content { max-height: 48vh; overflow: auto; padding: 0 4px; }
+#settings-changelog-content h2 { font-size: 1rem; }

@@ -1,4 +1,6 @@
 import './styles.css';
+import { version } from '../package.json';
+import changelog from '../CHANGELOG.md?raw';
 import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
@@ -801,6 +803,22 @@ $('pdf-file').onchange = (event) => {
   importBook(file).catch(failure);
 };
 $('settings-open').onclick = openSettings;
+$('app-version').textContent = '当前版本 v' + version;
+$('settings-changelog').addEventListener('toggle', () => {
+  const section = $('settings-changelog-content');
+  if ($('settings-changelog').open && !section.hasChildNodes()) {
+    renderAnswer(section, changelog.replace(/^# 更新日志\s*/, ''));
+  }
+});
+if (import.meta.env.MODE === 'android') {
+  $('check-update').hidden = false;
+  $('check-update').onclick = async () => {
+    try {
+      const { checkAndroidUpdate } = await import('./harmony.js');
+      await checkAndroidUpdate();
+    } catch (error) { failure(error); }
+  };
+}
 $('pdf-export').onclick = () => {
   $('pdf-save-status').textContent = '';
   $('pdf-cloud-link').hidden = true;
