@@ -1,31 +1,29 @@
 const pointPerEmu = 1 / 12700;
 
 async function openWord(data, extension, options) {
-  const { DocxDocument, buildDocxTextLayer } = await import('@silurus/ooxml/docx');
+  const { DocxDocument } = await import('@silurus/ooxml/docx');
   const legacyDoc = extension === 'doc' ? (await import('@silurus/ooxml-legacy-office/doc')).legacyDoc : undefined;
   const model = await DocxDocument.load(data, { ...options, legacyDoc });
   return {
-    model, textLayer: buildDocxTextLayer,
+    model,
     size(index) {
       const { widthPt, heightPt } = model.pageSize(index);
       return { width: widthPt, height: heightPt };
     },
     count: () => model.pageCount,
     bitmap: (index, width, dpr) => model.renderPageToBitmap(index, { width, dpr }),
-    runs: (index, width) => model.collectPageRuns(index, { width }),
   };
 }
 
 async function openSlides(data, extension, options) {
-  const { PptxPresentation, buildPptxTextLayer } = await import('@silurus/ooxml/pptx');
+  const { PptxPresentation } = await import('@silurus/ooxml/pptx');
   const legacyPpt = extension === 'ppt' ? (await import('@silurus/ooxml-legacy-office/ppt')).legacyPpt : undefined;
   const model = await PptxPresentation.load(data, { ...options, legacyPpt });
   return {
-    model, textLayer: buildPptxTextLayer,
+    model,
     size: () => ({ width: model.slideWidth * pointPerEmu, height: model.slideHeight * pointPerEmu }),
     count: () => model.slideCount,
     bitmap: (index, width, dpr) => model.renderSlideToBitmap(index, { width, dpr }),
-    runs: (index, width) => model.collectSlideRuns(index, width),
   };
 }
 
@@ -49,13 +47,6 @@ function officePage(source, index) {
           } finally { bitmap.close(); }
         }),
       };
-    },
-    async textRuns(viewport) { return source.runs(index, viewport.width); },
-    placeText(layer, viewport, runs) {
-      source.textLayer(layer, runs, viewport.width, viewport.height);
-      const spans = [];
-      for (const span of layer.querySelectorAll('[data-run-index]')) spans[Number(span.dataset.runIndex)] = span;
-      return spans;
     },
   };
 }
@@ -91,14 +82,4 @@ export function openOffice(file, extension) {
     },
   };
   return task;
-}
-
-export function officeTextItems(runs) {
-  return runs.map((run, index) => {
-    const next = runs[index + 1];
-    const y = run.y ?? run.shapeY + run.inShapeY;
-    const nextY = next?.y ?? next?.shapeY + next?.inShapeY;
-    return { str: run.text, hasEOL: Math.abs(y - nextY) > run.h * .5 ||
-      run.paragraphId !== next?.paragraphId || run.shapeId !== next?.shapeId };
-  });
 }

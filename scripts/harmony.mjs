@@ -11,8 +11,6 @@ const licenses = {
   dompurify: 'LICENSE',
   katex: 'LICENSE',
   marked: 'LICENSE.md',
-  'tesseract.js': 'LICENSE.md',
-  'tesseract.js-core': 'LICENSE',
   jszip: 'LICENSE.markdown',
   '@silurus/ooxml': 'LICENSE',
   '@silurus/ooxml-legacy-office': 'LICENSE',

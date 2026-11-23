@@ -1,54 +1,20 @@
-import { getDocument, GlobalWorkerOptions, TextLayer } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
-import 'pdfjs-dist/web/pdf_viewer.css';
 import { inkContact, mixPoint, paintStrokes, traceInk } from './ink.js';
 import { InkTools } from './ink-tools.js';
 import { readState, saveState } from './storage.js';
 import { formats } from './book-format.js';
+import { IMAGE_LIMIT, isExcerptImage } from './excerpts.js';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 const byId = (id) => document.getElementById(id);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const scanMessage = '框选课本文字，扫描版可直接识字。';
+const scanMessage = '拖动框选课本区域，可以连续添加多张截图。';
 const zoomMin = .75;
 const zoomMax = 2.5;
 
 function midpoint([a, b]) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
-}
-
-function joinText(items) {
-  let text = '';
-  for (const { str, hasEOL } of items) {
-    if (/[A-Za-z0-9]$/.test(text) && /^[A-Za-z0-9]/.test(str)) text += ' ';
-    text += str + (hasEOL ? '\n' : '');
-  }
-  return text.trim();
-}
-
-function overlap(a, b) {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
-
-function intersectsCharacter(box, character) {
-  return overlap(box, character) &&
-    Math.min(box.right, character.right) - Math.max(box.left, character.left) >= character.width * .25;
-}
-
-function getSpanText(span, box) {
-  if (!span) return '';
-  const rect = span.getBoundingClientRect();
-  if (!overlap(rect, box)) return '';
-  if (box.left <= rect.left && box.right >= rect.right) return span.textContent;
-  if (!span.firstChild || span.firstChild.nodeType !== Node.TEXT_NODE) return span.textContent;
-  const range = document.createRange();
-  let position = 0;
-  return Array.from(span.textContent).filter((letter) => {
-    range.setStart(span.firstChild, position);
-    position += letter.length;
-    range.setEnd(span.firstChild, position);
-    return intersectsCharacter(box, range.getBoundingClientRect());
-  }).join('');
 }
 
 export class Reader {
@@ -73,7 +39,6 @@ export class Reader {
     this.pages = {};
     this.history = new Map();
     this.bookHistories = new Map();
-    this.revision = 0;
     this.openRevision = 0;
     this.inkTools = new InkTools(this, {
       host: byId('pdf-tools').parentElement, button: byId('ink-config'), modes: byId('modes'),
@@ -86,9 +51,7 @@ export class Reader {
       if (!button) return;
       this.inkTools.select(button.dataset.tool);
     });
-    byId('native-select').onclick = () => this.setTool(this.tool === 'native' ? 'select' : 'native');
     byId('use-selection').onclick = () => this.quoteSelection().catch(this.onError);
-    byId('use-selection').onpointerdown = (event) => event.preventDefault();
     byId('page-quote').onclick = () => this.quotePage().then(this.onQuote).catch(this.onError);
     byId('prev').onclick = () => this.setPage(this.page - 1).catch(this.onError);
     byId('next').onclick = () => this.setPage(this.page + 1).catch(this.onError);
@@ -113,15 +76,6 @@ export class Reader {
     this.reader.addEventListener('touchmove', (event) => this.touchMove(event), { passive: true });
     this.reader.addEventListener('touchend', (event) => this.touchEnd(event), { passive: true });
     this.reader.addEventListener('touchcancel', (event) => this.touchEnd(event), { passive: true });
-    document.addEventListener('selectionchange', () => {
-      if (this.tool !== 'native') return;
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) return;
-      const paper = selection.anchorNode?.parentElement?.closest('.page-slot');
-      if (paper && paper === selection.focusNode?.parentElement?.closest('.page-slot')) {
-        this.selectPage(this.surfacesByElement.get(paper), false);
-      }
-    });
     this.reader.addEventListener('scroll', () => {
       if (this.pinch || this.restoring || !this.book) return;
       this.queuePositionSave();
@@ -144,13 +98,8 @@ export class Reader {
 
   get currentSurface() { return this.surfaces[this.page - 1]; }
   get rendered() { return this.currentSurface?.rendered; }
-  get canvas() { return this.currentSurface?.canvas; }
   get ink() { return this.currentSurface?.ink; }
-  get textLayer() { return this.currentSurface?.textLayer; }
   get rect() { return this.currentSurface?.rect; }
-  get textItems() { return this.currentSurface?.textItems || []; }
-  get textDivs() { return this.currentSurface?.textDivs || []; }
-
   get fingerInk() { return this.reader.dataset.fingerInk === 'true'; }
   set fingerInk(value) { this.reader.dataset.fingerInk = String(Boolean(value)); }
 
@@ -198,7 +147,6 @@ export class Reader {
       for (const surface of this.surfaces) this.releaseSurface(surface);
       this.nearby.clear();
       this.documentSource?.destroy().catch(() => {});
-      this.revision++;
       this.documentSource = documentSource;
       this.book = book;
       this.pages = prior?.pages || {};
@@ -266,13 +214,12 @@ export class Reader {
     if (!surface || surface === this.currentSurface) return;
     if (clear) this.clearSelection();
     this.page = surface.number;
-    this.revision++;
     this.queuePositionSave();
     this.sync();
   }
 
   pageAtScroll() {
-    if (this.restoring || this.pointer || this.pinch || !this.documentSource || (this.tool === 'native' && !window.getSelection()?.isCollapsed)) return;
+    if (this.restoring || this.pointer || this.pinch || !this.documentSource) return;
     const reader = this.reader.getBoundingClientRect();
     const focus = reader.top + Math.min(120, reader.height * .22);
     let best;
@@ -317,14 +264,13 @@ export class Reader {
   releaseSurface(surface) {
     if (!surface.canvas && !surface.pending) return;
     this.cancelRender(surface);
-    surface.layerTask?.cancel();
     for (const canvas of [surface.canvas, surface.ink, surface.overlay]) {
       if (canvas) canvas.width = canvas.height = 0;
     }
     surface.paper.replaceChildren();
     Object.assign(surface, {
-      canvas: null, ink: null, overlay: null, textLayer: null, rect: null, textItems: null, textDivs: null,
-      renderTask: null, layerTask: null, textPending: null, displayViewport: null, pending: null,
+      canvas: null, ink: null, overlay: null, rect: null,
+      renderTask: null, pending: null,
       rendered: false, needsRefresh: false,
     });
   }
@@ -359,7 +305,6 @@ export class Reader {
     if (!width || !this.currentSurface) return;
     this.finishPointer(true);
     this.clearSelection();
-    this.revision++;
     const reader = this.reader.getBoundingClientRect();
     focus ??= { x: reader.left + reader.width / 2, y: reader.top + Math.min(120, reader.height * .22) };
     anchor ??= this.captureAnchor(focus.x, focus.y);
@@ -371,10 +316,7 @@ export class Reader {
       if (surface.rendered) {
         // Leave the current bitmap and ink visible while a sharper page is prepared.
         this.cancelRender(surface);
-        surface.layerTask?.cancel();
-        surface.textLayer.replaceChildren();
-        Object.assign(surface, { renderTask: null, layerTask: null, pending: null, textPending: null,
-          textItems: null, textDivs: null, needsRefresh: true });
+        Object.assign(surface, { renderTask: null, pending: null, needsRefresh: true });
       } else this.releaseSurface(surface);
       this.render(surface).catch(this.onError);
     }
@@ -434,13 +376,12 @@ export class Reader {
       surface.viewport = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: this.sizeSurface(surface) });
       const contents = byId('page-template').content.firstElementChild.cloneNode(true);
-      const [canvas, textLayer, ink, overlay, rect] = contents.children;
-      if (surface.source.office) textLayer.className = 'office-text';
+      const [canvas, ink, overlay, rect] = contents.children;
       const refresh = surface.rendered;
       if (!refresh) {
         surface.paper.setAttribute('aria-label', `第 ${surface.number} 页`);
         surface.paper.replaceChildren(contents);
-        Object.assign(surface, { canvas, textLayer, ink, overlay, rect });
+        Object.assign(surface, { canvas, ink, overlay, rect });
       }
       const pixels = Math.min(window.devicePixelRatio || 1, 2.3, Math.sqrt(5000000 / (viewport.width * viewport.height)));
       canvas.width = Math.max(1, Math.ceil(viewport.width * pixels));
@@ -459,11 +400,9 @@ export class Reader {
         surface.canvas = canvas;
       }
       surface.paper.firstElementChild.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
-      surface.displayViewport = viewport;
       surface.rendered = true;
       surface.needsRefresh = false;
       this.paint(surface);
-      if (this.tool === 'native') this.ensureTextLayer(surface).catch(this.onError);
       if (surface === this.currentSurface) {
         this.showStatus('');
         this.sync();
@@ -471,45 +410,6 @@ export class Reader {
     } catch (error) {
       if (stillCurrent() && !['RenderingCancelledException', 'AbortException'].includes(error.name)) throw error;
     }
-  }
-
-  ensureTextLayer(surface) {
-    if (surface.needsRefresh) return this.render(surface, true).then(() =>
-      surface.rendered && !surface.needsRefresh ? this.ensureTextLayer(surface) : false);
-    if (surface.textItems) return Promise.resolve(true);
-    if (surface.textPending) return surface.textPending;
-    const generation = surface.generation;
-    const current = () => surface.generation === generation && surface.source === this.documentSource;
-    surface.textPending = (async () => {
-      try {
-        const page = await surface.source.getPage(surface.number);
-        if (surface.source.office) {
-          const { officeTextItems } = await import('./office.js');
-          const runs = await page.textRuns(surface.displayViewport);
-          if (!current()) return false;
-          surface.textDivs = page.placeText(surface.textLayer, surface.displayViewport, runs);
-          surface.textItems = officeTextItems(runs);
-          return true;
-        }
-        const content = await page.getTextContent();
-        if (!current()) return false;
-        surface.textLayer.replaceChildren();
-        surface.layerTask = new TextLayer({
-          textContentSource: content, container: surface.textLayer, viewport: surface.displayViewport,
-        });
-        await surface.layerTask.render();
-        if (!current()) return false;
-        surface.textItems = content.items.filter((item) => typeof item.str === 'string');
-        surface.textDivs = surface.layerTask.textDivs;
-        return true;
-      } catch (error) {
-        if (current()) throw error;
-        return false;
-      } finally {
-        if (current()) surface.textPending = null;
-      }
-    })();
-    return surface.textPending;
   }
 
   showStatus(message) {
@@ -536,7 +436,7 @@ export class Reader {
     byId('zoom-reset').textContent = `${Math.round(this.zoom * 100)}%`;
     byId('zoom-out').disabled = !canRead || this.zoom <= zoomMin;
     byId('zoom-in').disabled = !canRead || this.zoom >= zoomMax;
-    byId('use-selection').disabled = !this.rendered || this.recognizing;
+    byId('use-selection').disabled = !this.rendered || this.capturing;
     const history = this.history.get(this.page);
     byId('undo').disabled = !history?.undo.length;
     byId('redo').disabled = !history?.redo.length;
@@ -576,25 +476,15 @@ export class Reader {
     this.reader.dataset.tool = tool;
     this.clearSelection();
     for (const button of byId('modes').querySelectorAll('button')) {
-      button.setAttribute('aria-pressed', String(button.dataset.tool === (tool === 'native' ? 'select' : tool)));
+      button.setAttribute('aria-pressed', String(button.dataset.tool === tool));
     }
-    const selecting = tool === 'select' || tool === 'native';
-    byId('selection-bar').hidden = !selecting;
-    byId('native-select').textContent = tool === 'native' ? '返回框选' : '系统选区';
-    byId('selection-note').textContent = tool === 'native' ? '长按或拖动选择文字，再点引用选文。' : scanMessage;
-    if (tool === 'native') {
-      for (const page of new Set([this.currentSurface, ...this.nearby])) {
-        if (page?.rendered) this.ensureTextLayer(page).catch(this.onError);
-      }
-    }
+    byId('selection-bar').hidden = tool !== 'select';
     this.inkTools.sync();
   }
 
   clearSelection() {
     this.bounds = null;
     if (this.rect) this.rect.hidden = true;
-    const selection = window.getSelection();
-    if (selection?.anchorNode && this.stack.contains(selection.anchorNode)) selection.removeAllRanges();
     if (this.tool === 'select') byId('selection-note').textContent = scanMessage;
   }
 
@@ -611,7 +501,7 @@ export class Reader {
     const canvas = event.target.closest('.ink-canvas');
     if (!canvas) return;
     const { touch, stylus, nativePressure } = inkContact(event);
-    if (touch && !stylus && !this.fingerInk) return;
+    if (touch && !stylus && !this.fingerInk && this.tool !== 'select') return;
     const surface = this.surfacesByElement.get(canvas.closest('.page-slot'));
     if (!surface?.rendered) return;
     this.selectPage(surface);
@@ -792,7 +682,7 @@ export class Reader {
       style[property] = `${bounds[field] * 100}%`;
     }
     this.rect.hidden = false;
-    byId('selection-note').textContent = '选区已标记，点引用选文加入右侧。';
+    byId('selection-note').textContent = '选区已标记，点「添加截图」加入本次提问。';
   }
 
   get currentStrokes() {
@@ -942,67 +832,73 @@ export class Reader {
       .catch(() => this.notify('本机存储写入失败，本次批注可能无法保留。'));
   }
 
-  getReference(text, method) {
-    return { book: this.book.title, page: this.page, text, method };
+  async capturePage(number = this.page, bounds = { x: 0, y: 0, w: 1, h: 1 }, method = '整页截图') {
+    const source = this.documentSource;
+    const book = this.book;
+    if (!source) throw new Error('请先打开课本。');
+    const page = await source.getPage(number);
+    const view = page.getViewport({ scale: 1 });
+    const width = view.width * bounds.w;
+    const height = view.height * bounds.h;
+    const scale = Math.min(4, 1700 / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { alpha: false });
+    let original;
+    try {
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      if (source.office) {
+        original = document.createElement('canvas');
+        const officeScale = Math.min(scale, 2200 / Math.max(view.width, view.height));
+        original.width = Math.max(1, Math.round(view.width * officeScale));
+        original.height = Math.max(1, Math.round(view.height * officeScale));
+        await page.render({ canvasContext: original.getContext('2d'), viewport: view,
+          transform: [officeScale, 0, 0, officeScale, 0, 0] }).promise;
+        context.drawImage(original, bounds.x * original.width, bounds.y * original.height,
+          bounds.w * original.width, bounds.h * original.height, 0, 0, canvas.width, canvas.height);
+      } else {
+        await page.render({ canvasContext: context, viewport: view,
+          transform: [scale, 0, 0, scale, -bounds.x * view.width * scale, -bounds.y * view.height * scale] }).promise;
+      }
+      if (this.book?.id !== book.id || source !== this.documentSource) throw new Error('课本已切换，请重新截图。');
+      let image = canvas.toDataURL('image/jpeg', .86);
+      while (image.length > IMAGE_LIMIT && canvas.width > 1 && canvas.height > 1) {
+        const smaller = document.createElement('canvas');
+        smaller.width = Math.max(1, Math.floor(canvas.width * .8));
+        smaller.height = Math.max(1, Math.floor(canvas.height * .8));
+        smaller.getContext('2d').drawImage(canvas, 0, 0, smaller.width, smaller.height);
+        canvas.width = smaller.width;
+        canvas.height = smaller.height;
+        context.drawImage(smaller, 0, 0);
+        image = canvas.toDataURL('image/jpeg', .84);
+      }
+      if (!isExcerptImage(image)) throw new Error('截图生成失败，请缩小选区后重试。');
+      return { bookId: book.id, book: book.title, page: number, method, image, width: canvas.width, height: canvas.height };
+    } finally {
+      canvas.width = canvas.height = 0;
+      if (original) original.width = original.height = 0;
+    }
   }
 
   async quotePage() {
-    if (!this.rendered) throw new Error('请等课本页面显示后再引用。');
-    const revision = this.revision;
-    if (!await this.ensureTextLayer(this.currentSurface) || revision !== this.revision) {
-      throw new Error('课本页面已改变，请重新引用。');
-    }
-    const text = joinText(this.textItems);
-    return text ? this.getReference(text, '整页') : this.runOcr({ x: 0, y: 0, w: 1, h: 1 });
+    return this.capturePage();
   }
 
   async quoteSelection() {
-    if (this.tool === 'native') {
-      const selection = window.getSelection();
-      const text = selection?.toString().trim();
-      if (!text || !this.textLayer?.contains(selection.anchorNode) || !this.textLayer.contains(selection.focusNode)) {
-        this.notify('请先长按或拖动选中课本文字。');
-        return;
-      }
-      this.onQuote(this.getReference(text, '选文'));
-      this.clearSelection();
-      return;
-    }
-    if (!this.bounds || !this.ink || this.bounds.w * this.ink.clientWidth < 5 || this.bounds.h * this.ink.clientHeight < 5) {
-      this.notify('请在课本上拖动框选一段文字。');
-      return;
-    }
-    const revision = this.revision;
+    if (this.capturing) return;
     const bounds = this.bounds;
-    if (!await this.ensureTextLayer(this.currentSurface) || revision !== this.revision || this.bounds !== bounds) {
-      throw new Error('课本选区已改变，请重新引用。');
+    if (!bounds || !this.ink || bounds.w * this.ink.clientWidth < 5 || bounds.h * this.ink.clientHeight < 5) {
+      this.notify('请在课本上拖动框选一个区域。');
+      return;
     }
-    const box = this.rect.getBoundingClientRect();
-    const text = joinText(this.textItems
-      .map((item, index) => ({ str: getSpanText(this.textDivs[index], box), hasEOL: item.hasEOL }))
-      .filter(({ str }) => str));
-    if (!text && this.textItems.some(({ str }) => str.trim())) {
-      this.notify('框内没有文字层内容，可调整选区。正在尝试识字。');
-    }
-    this.onQuote(text ? this.getReference(text, '选文') : await this.runOcr(this.bounds));
-    this.clearSelection();
-  }
-
-  async runOcr(bounds) {
-    if (this.recognizing) throw new Error('正在识字，请稍候。');
-    const revision = this.revision;
-    this.recognizing = true;
+    const page = this.page;
+    this.capturing = true;
     this.sync();
     try {
-      const { recognizeRegion } = await import('./ocr.js');
-      if (revision !== this.revision) throw new Error('页面已改变，请重新识字。');
-      const text = await recognizeRegion(this.canvas, bounds, (message) => this.showStatus(message));
-      if (revision !== this.revision) throw new Error('页面已改变，请重新识字。');
-      if (!text) throw new Error('没有识别到文字，请放大后重试。');
-      return this.getReference(text, 'OCR');
+      this.onQuote(await this.capturePage(page, bounds, '选文截图'));
+      if (this.bounds === bounds) this.clearSelection();
     } finally {
-      this.recognizing = false;
-      this.showStatus('');
+      this.capturing = false;
       this.sync();
     }
   }

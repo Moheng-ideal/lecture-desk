@@ -44,8 +44,16 @@ async function post(path, data, credentials, signal) {
   return response;
 }
 
-export async function streamAnswer(data, onText, signal) {
-  const response = await post('chat', data, { deepseek: settings.deepseek }, signal);
+export function streamAnswer(data, onText, signal) {
+  return streamDeepSeek('chat', data, onText, signal);
+}
+
+export function suggestBookTitle(references, signal) {
+  return streamDeepSeek('book-title', { references }, () => {}, signal);
+}
+
+async function streamDeepSeek(path, data, onText, signal) {
+  const response = await post(path, data, { deepseek: settings.deepseek }, signal);
   if (!response.headers.get('content-type')?.includes('text/event-stream') || !response.body) {
     throw new Error('讲解服务没有返回有效的流式回答。');
   }

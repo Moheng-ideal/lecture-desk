@@ -16,6 +16,9 @@ final class DeskNetwork {
     static final Pattern ID = Pattern.compile("[a-fA-F0-9-]{32,36}");
     private static final String FEISHU = "https://open.feishu.cn/open-apis";
     private static final String UPLOAD = FEISHU + "/drive/v1/files/upload_all";
+    private static final String MEDIA_UPLOAD = FEISHU + "/drive/v1/medias/upload_all";
+    private static final Pattern IMAGE_BLOCK = Pattern.compile(Pattern.quote(FEISHU) +
+        "/docx/v1/documents/[A-Za-z0-9]{1,100}/blocks/[A-Za-z0-9]{1,100}");
     private static final Pattern BLOCKS = Pattern.compile(Pattern.quote(FEISHU) +
         "/docx/v1/documents/[A-Za-z0-9]{1,100}/blocks/[A-Za-z0-9]{1,100}/children\\?client_token=[0-9a-f-]{36}");
     private static final Pattern MULTIPART = Pattern.compile("multipart/form-data; boundary=[A-Za-z0-9-]{1,80}");
@@ -37,7 +40,7 @@ final class DeskNetwork {
 
     boolean start(String id, String url, String body, String auth, String contentType) {
         if (id == null || url == null || body == null || auth == null || contentType == null) return false;
-        boolean upload = UPLOAD.equals(url);
+        boolean upload = UPLOAD.equals(url) || MEDIA_UPLOAD.equals(url);
         boolean allowed = upload ? MULTIPART.matcher(contentType).matches() : isJsonEndpoint(url);
         if (!allowed || body.isEmpty() || body.length() > (upload ? 28_000_000 : 4_000_000) ||
             auth.length() > 5000 || auth.indexOf('\r') >= 0 || auth.indexOf('\n') >= 0 ||
@@ -56,7 +59,7 @@ final class DeskNetwork {
     private static boolean isJsonEndpoint(String url) {
         return url.equals("https://api.deepseek.com/chat/completions") ||
             url.equals(FEISHU + "/auth/v3/tenant_access_token/internal") ||
-            url.equals(FEISHU + "/docx/v1/documents") || BLOCKS.matcher(url).matches();
+            url.equals(FEISHU + "/docx/v1/documents") || BLOCKS.matcher(url).matches() || IMAGE_BLOCK.matcher(url).matches();
     }
 
     private void send(String id, String url, String body, String auth, String type, boolean upload, Call call) {
@@ -68,7 +71,7 @@ final class DeskNetwork {
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(12000);
             connection.setReadTimeout(110000);
-            connection.setRequestMethod("POST");
+            connection.setRequestMethod(IMAGE_BLOCK.matcher(url).matches() ? "PATCH" : "POST");
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", type);
             if (!auth.isEmpty()) connection.setRequestProperty("Authorization", auth);

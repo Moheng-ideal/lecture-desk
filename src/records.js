@@ -58,7 +58,8 @@ export function recordSections(records) {
       heading: `第 ${index + 1} 问`,
       date: formatDate(record.date),
       question: record.question,
-      references: record.references.map((reference) => ({ label: sourceLabel(reference), text: reference.text })),
+      references: record.references.map((reference) => ({ label: sourceLabel(reference),
+        ...(reference.image ? { image: reference.image, width: reference.width, height: reference.height } : { text: reference.text }) })),
       answer: parts.map(({ text }) => text),
       figures: parts.flatMap(({ diagram }, index) => diagram ? [{ index, diagram }] : []),
     };

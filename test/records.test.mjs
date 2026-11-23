@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { currentReferences } from '../src/excerpts.js';
 import { parseDiagram } from '../src/diagrams.js';
 import { groupRecords, recordSections } from '../src/records.js';
 
@@ -28,4 +29,14 @@ test('diagram export keeps a caption and accepts only bounded coordinate data', 
   }]);
   assert.deepEqual(section.answer, ['先看下图。', '晶胞 · 顶点']);
   assert.equal(section.figures[0].index, 1);
+});
+
+test('renamed books update both historical text labels and screenshot labels without merging books', () => {
+  const refs = [{ book: '旧名', page: 1, text: '旧摘录' },
+    { bookId: 'other', book: '另一册旧名', page: 2, image: '截图' }];
+  const renamed = currentReferences(refs, 'active', new Map([['active', '新名'], ['other', '另一册新名']]));
+  assert.deepEqual(renamed.map((ref) => ref.book), ['新名', '另一册新名']);
+  assert.equal(renamed[0].text, '旧摘录');
+  assert.equal(renamed[1].image, '截图');
+  assert.equal(refs[0].book, '旧名');
 });

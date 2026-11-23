@@ -1,7 +1,7 @@
 import './styles.css';
 import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
-import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer } from './api.js';
+import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
 import { formatDate, groupRecords, sourceLabel } from './records.js';
 import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
 import { installDividers } from './layout.js';
@@ -9,6 +9,7 @@ import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
 import { nativeApp } from './platform.js';
+import { CHAT_BUDGET, MAX_REFERENCES, currentReferences } from './excerpts.js';
 import { bookFormat, formats } from './book-format.js';
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +18,8 @@ const state = { book: sample, records: [], references: [], exports: [], config: 
 const drafts = new Map();
 const bookTitles = new Map([[sample.id, sample.title]]);
 let openBooks = [];
+let renamedBooks = new Map();
+let rename;
 const voice = installVoice();
 let reader;
 let toastTimeout;
@@ -87,8 +90,7 @@ function setBookFullscreen(enabled) {
 function displayExcerpts() {
   $('excerpts').replaceChildren(...state.references.map((ref) => {
     const container = element('div', null, 'excerpt-chip');
-    const detail = element('details');
-    detail.append(element('summary', sourceLabel(ref)), element('p', ref.text));
+    const detail = referenceDetails(ref);
     const remove = button('×', () => {
       state.references = state.references.filter((item) => item !== ref);
       displayExcerpts();
@@ -100,29 +102,35 @@ function displayExcerpts() {
 }
 
 function addExcerpt(reference) {
-  if (reference.text.length > 24000) {
-    throw new Error('摘录超过 24,000 字，请分段框选。');
-  }
-  if (state.references.some((ref) => ref.book === reference.book && ref.page === reference.page && ref.text === reference.text)) {
-    feedback('这段文字已经加入本次提问。');
+  if (state.references.some((ref) => ref.bookId === reference.bookId && ref.page === reference.page &&
+      ref.image === reference.image && ref.text === reference.text)) {
+    feedback('这张截图已经加入本次提问。');
     return;
   }
-  if (state.references.length >= 8) throw new Error('单次提问最多包含 8 段摘录，请先移除一段。');
+  if (state.references.length >= MAX_REFERENCES) {
+    throw new Error(`单次提问最多附上 ${MAX_REFERENCES} 张截图，请先移除一张。`);
+  }
   state.references.push(reference);
   displayExcerpts();
-  feedback('已引用，可以在右侧提问。');
-  showPanel('chat');
+  feedback(`已添加截图，本次提问已附 ${state.references.length} 项资料。`);
 }
 
 function referenceDetails(reference) {
   const detail = element('details', null, 'citation');
-  detail.append(element('summary', sourceLabel(reference)), element('blockquote', reference.text));
+  detail.append(element('summary', sourceLabel(reference)));
+  if (reference.image) {
+    const image = element('img', null, 'excerpt-image');
+    image.alt = sourceLabel(reference);
+    image.src = reference.image;
+    image.loading = 'lazy';
+    detail.append(image);
+  } else detail.append(element('blockquote', reference.text));
   return detail;
 }
 
-function userCard({ question, references }) {
+function userCard({ question, references, bookId }) {
   const item = element('li', null, 'message user');
-  item.append(element('span', '你', 'message-label'), element('p', question), ...references.map(referenceDetails));
+  item.append(element('span', '你', 'message-label'), element('p', question), ...currentReferences(references, bookId, bookTitles).map(referenceDetails));
   return item;
 }
 
@@ -211,6 +219,7 @@ async function refreshConfiguration() {
 
 async function activateBook(book) {
   if (changingBook) return false;
+  book.title = renamedBooks.get(book.id) || book.title;
   if (state.stream) {
     feedback('请先结束当前讲解，再切换课本。');
     return false;
@@ -246,22 +255,37 @@ function renderBookTabs() {
   const left = nav.scrollLeft;
   const focus = nav.contains(document.activeElement);
   let active;
-  nav.replaceChildren(...openBooks.map((book) => {
+  const remaining = new Map([...nav.children].map((child) => [child.dataset.id, child]));
+  for (const book of openBooks) {
     const selected = book.id === state.book.id;
-    const item = element('div', null, 'book-tab');
+    let item = remaining.get(book.id);
+    if (!item) {
+      item = element('div', null, 'book-tab');
+      item.dataset.id = book.id;
+      const pick = button(book.title, () => {
+        showPanel('book');
+        if (book.id !== state.book.id) activateBook(book).catch(failure);
+      });
+      pick.ondblclick = () => openBookRename(book);
+      pick.onkeydown = (event) => {
+        if (event.key !== 'F2') return;
+        event.preventDefault();
+        openBookRename(book);
+      };
+      const close = button('×', () => closeBookTab(book.id).catch(failure));
+      item.append(pick, close);
+      nav.append(item);
+    }
+    remaining.delete(book.id);
+    const [pick, close] = item.children;
     item.dataset.selected = String(selected);
-    const pick = button(book.title, () => {
-      showPanel('book');
-      if (!selected) activateBook(book).catch(failure);
-    });
-    pick.title = book.title;
+    if (pick.textContent !== book.title) pick.textContent = book.title;
+    pick.title = `${book.title}（双击或按 F2 重命名）`;
     pick.setAttribute('aria-current', String(selected));
-    if (selected) active = pick;
-    const close = button('×', () => closeBookTab(book.id).catch(failure));
     close.setAttribute('aria-label', `关闭《${book.title}》标签页`);
-    item.append(pick, close);
-    return item;
-  }));
+    if (selected) active = pick;
+  }
+  for (const item of remaining.values()) item.remove();
   nav.scrollLeft = left;
   if (focus) active?.focus({ preventScroll: true });
   if (active) {
@@ -272,6 +296,99 @@ function renderBookTabs() {
   }
   saveState('openBooks', openBooks.map(({ id }) => id)).catch(() => {});
 }
+
+function openBookRename(book) {
+  if ($('book-rename').open || rename?.saving) return;
+  if (state.stream) {
+    feedback('请先结束当前讲解，再重命名课本。');
+    return;
+  }
+  rename = { book };
+  $('book-rename-title').value = book.title;
+  $('book-rename-save').disabled = $('book-ai-title').disabled = false;
+  status('book-rename-status');
+  $('book-rename').showModal();
+  $('book-rename-title').select();
+}
+
+$('book-title').ondblclick = () => openBookRename(state.book);
+$('book-rename').onclose = () => {
+  if ($('book-rename').open) return;
+  rename?.controller?.abort();
+  if (!rename?.saving) rename = null;
+};
+$('book-rename-form').onsubmit = async (event) => {
+  event.preventDefault();
+  const edit = rename;
+  const title = $('book-rename-title').value.trim();
+  if (!edit || !title || edit.saving) return;
+  edit.controller?.abort();
+  edit.saving = true;
+  $('book-rename-save').disabled = $('book-ai-title').disabled = true;
+  try {
+    const id = edit.book.id;
+    const names = new Map(renamedBooks).set(id, title);
+    await saveState('renamedBooks', [...names]);
+    renamedBooks = names;
+    edit.book.title = title;
+    const tab = openBooks.find((book) => book.id === id);
+    if (tab) tab.title = title;
+    bookTitles.set(id, title);
+    if (state.book.id === id) {
+      state.book.title = title;
+      reader.sync();
+      displayThread();
+    }
+    state.references = currentReferences(state.references, state.book.id, bookTitles);
+    displayExcerpts();
+    renderBookTabs();
+    if (rename === edit) $('book-rename').close();
+  } catch (error) {
+    if (rename === edit) status('book-rename-status', error.message || '名称未能保存。');
+  } finally {
+    if (rename === edit) $('book-rename-save').disabled = $('book-ai-title').disabled = false;
+    edit.saving = false;
+    if (rename === edit && !$('book-rename').open) rename = null;
+  }
+};
+
+$('book-ai-title').onclick = async () => {
+  const edit = rename;
+  if (!edit || edit.controller || edit.saving) return;
+  const controller = new AbortController();
+  edit.controller = controller;
+  $('book-ai-title').disabled = true;
+  try {
+    await credentialsReady;
+    controller.signal.throwIfAborted();
+    if (!state.config.deepseek && !getConnections().deepseek) {
+      throw new Error('请先在设置中配置 DeepSeek API Key。');
+    }
+    if (changingBook) throw new Error('请等课本打开后再点「AI 总结命名」。');
+    if (state.book.id !== edit.book.id && !await activateBook(edit.book)) throw new Error('无法打开课本。');
+    controller.signal.throwIfAborted();
+    if (!reader.documentSource) throw new Error('请先打开课本。');
+    status('book-rename-status', 'DeepSeek 正在阅读课本页面并建议名称…');
+    const count = reader.documentSource.numPages;
+    const pages = [...new Set([1, reader.page > 1 ? reader.page : Math.min(2, count)])];
+    const captures = [];
+    for (const page of pages) {
+      captures.push(await reader.capturePage(page));
+      controller.signal.throwIfAborted();
+    }
+    const answer = await suggestBookTitle(captures, controller.signal);
+    controller.signal.throwIfAborted();
+    const title = answer.trim().split(/\r?\n/)[0].replace(/^[\s#*「『《“"']+|[\s*」』》”"']+$/g, '').slice(0, 100);
+    if (!title) throw new Error('DeepSeek 未返回有效名称，请重试。');
+    $('book-rename-title').value = title;
+    status('book-rename-status', '已填入建议，可继续修改，点「保存名称」应用。');
+  } catch (error) {
+    if (!controller.signal.aborted) status('book-rename-status', error.message);
+  } finally {
+    edit.controller = null;
+    if (rename === edit && !edit.saving) $('book-ai-title').disabled = false;
+  }
+};
 
 async function closeBookTab(id) {
   if (changingBook) return;
@@ -315,6 +432,7 @@ async function importBook(file) {
 async function openLibrary() {
   const books = await listBooks().catch(() => []);
   const rows = [sample, ...books.sort((a, b) => b.imported - a.imported)].map((book) => {
+    book.title = renamedBooks.get(book.id) || book.title;
     const row = element('div', null, 'book-row');
     const pick = button(book.title + (book.sample ? ' · 示例课' : ''), async () => {
       $('library').close();
@@ -322,7 +440,10 @@ async function openLibrary() {
       if (book.id !== state.book.id) await activateBook(book).catch(failure);
     });
     pick.title = book.title;
-    row.append(pick);
+    row.append(pick, button('重命名', () => {
+      $('library').close();
+      openBookRename(book);
+    }, 'quiet'));
     if (!book.sample) row.append(element('small', formats[book.extension] || 'PDF'));
     if (!book.sample && book.id !== state.book.id) {
       row.append(button('移除', async () => {
@@ -378,9 +499,11 @@ function precedingTurns(question, references, preferences) {
   const candidates = state.records.filter((record) => record.bookId === state.book.id).slice(-8).reverse();
   const turns = [];
   const size = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
-  let room = 900000 - size({ question, references, preferences });
+  let room = CHAT_BUDGET - 10000 - size({ question, references, preferences });
   for (const record of candidates) {
-    const turn = { question: record.question, answer: record.answer, references: record.references };
+    if (record.answer.length > 950000) break;
+    const turn = { question: record.question, answer: record.answer,
+      references: currentReferences(record.references, record.bookId, bookTitles) };
     room -= size(turn);
     if (room < 0) break;
     turns.unshift(turn);
@@ -391,9 +514,10 @@ function precedingTurns(question, references, preferences) {
 async function ask(question, references = state.references) {
   await Promise.all([credentialsReady, preferencesReady]);
   if (state.stream || changingBook) return;
-  question = question.trim() || (references.length ? '请讲解这段课本内容。' : '');
+  references = currentReferences(references, state.book.id, bookTitles);
+  question = question.trim() || (references.length ? '请结合所附课本内容讲解。' : '');
   if (!question) {
-    status('chat-status', '请输入问题，或先引用一段课本。');
+    status('chat-status', '请输入问题，或先添加课本截图。');
     return;
   }
   showPanel('chat');
@@ -460,10 +584,11 @@ async function teach(question, next = false) {
   $('teach-page').disabled = true;
   $('teach-next').disabled = true;
   try {
+    if (state.references.length >= MAX_REFERENCES) throw new Error('本次提问的截图已满，请先移除一张。');
     if (next) await reader.setPage(reader.page + 1);
     const ref = await reader.quotePage();
-    if (ref.text.length > 24000) throw new Error('本页文字过多，请分段引用后提问。');
-    await ask(question, [ref]);
+    if (state.references.length >= MAX_REFERENCES) throw new Error('本次提问的截图已满，请先移除一张。');
+    await ask(question, [...state.references, ref]);
   } catch (error) {
     failure(error);
   } finally {
@@ -473,7 +598,10 @@ async function teach(question, next = false) {
 
 function selectedRecords() {
   const ids = new Set([...$('record-list').querySelectorAll('input:checked')].map((input) => input.value));
-  return state.records.filter((record) => ids.has(record.id));
+  return state.records.filter((record) => ids.has(record.id)).map((record) => ({
+    ...record, bookTitle: bookTitles.get(record.bookId) || record.bookTitle,
+    references: currentReferences(record.references, record.bookId, bookTitles),
+  }));
 }
 
 function updateRecordSelection() {
@@ -506,7 +634,7 @@ function showFeishu(url) {
 function openRecords() {
   const groups = groupRecords([...state.records].reverse(), bookTitles);
   const active = groups.find(({ id }) => id === state.book.id) || groups[0];
-  const titleFor = (group) => group?.id === sample.id || !group ? '讲课问答录' : `${group.title.slice(0, 105)}问答录`;
+  const titleFor = (group) => !group ? '讲课问答录' : `${group.title.slice(0, 105)}问答录`;
   $('record-title').value = titleFor(active);
   const selection = new Set((active?.records || []).map(({ id }) => id));
   function recordRow(record) {
@@ -525,7 +653,7 @@ function openRecords() {
     detail.addEventListener('toggle', () => {
       if (!detail.open || body.childNodes.length) return;
       const answer = element('div');
-      body.append(...record.references.map(referenceDetails), answer);
+      body.append(...currentReferences(record.references, record.bookId, bookTitles).map(referenceDetails), answer);
       renderAnswer(answer, record.answer);
     });
     row.append(label, detail);
@@ -582,7 +710,8 @@ async function exportFeishu() {
   try {
     const { title, records } = exportOptions();
     const destination = getConnections().feishu.folder || 'server';
-    const signature = JSON.stringify([title, destination, records.map((record) => record.id)]);
+    const signature = JSON.stringify([title, destination, records.map((record) => renamedBooks.has(record.bookId)
+      ? [record.id, record.bookTitle, ...record.references.map((ref) => ref.book)] : record.id)]);
     const prior = state.exports.find((item) => item.signature === signature);
     if (prior?.complete) {
       showFeishu(prior.url);
@@ -739,19 +868,25 @@ if (nativeApp) $('export-docx').textContent = '保存 Word';
 async function initialize() {
   await credentialsReady;
   refreshConfiguration();
-  const [bookId, records, fingerInk, exports, tabIds, books] = await Promise.all([
+  const [bookId, records, fingerInk, exports, tabIds, books, names] = await Promise.all([
     readState('activeBook').catch(() => null),
     listRecords().catch(() => []),
     readState('fingerInk').catch(() => false),
     readState('feishuExports').catch(() => []),
     readState('openBooks').catch(() => []),
     listBooks().catch(() => []),
+    readState('renamedBooks').catch(() => []),
   ]);
   reader.fingerInk = fingerInk;
   state.exports = exports || [];
   state.records = records.sort((a, b) => a.date.localeCompare(b.date));
   $('record-count').textContent = state.records.length;
-  const available = new Map([sample, ...books].map((item) => [item.id, item]));
+  renamedBooks = new Map(names || []);
+  for (const [id, title] of renamedBooks) bookTitles.set(id, title);
+  const available = new Map([sample, ...books].map((item) => {
+    item.title = renamedBooks.get(item.id) || item.title;
+    return [item.id, item];
+  }));
   for (const { id, title } of available.values()) bookTitles.set(id, title);
   openBooks = Array.isArray(tabIds) ? [...new Set(tabIds)].map((id) => available.get(id)).filter(Boolean) : [];
   const book = available.get(bookId) || openBooks[0] || sample;

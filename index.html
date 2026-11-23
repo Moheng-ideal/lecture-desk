@@ -26,7 +26,7 @@
   <main id="workspace" data-panel="book">
     <section class="book-pane" aria-label="课本区">
       <div class="book-bar">
-        <div class="file-info"><span class="file-mark" id="book-format" aria-hidden="true">PDF</span><div><strong id="book-title">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
+        <div class="file-info"><span class="file-mark" id="book-format" aria-hidden="true">PDF</span><div><strong id="book-title" title="双击重命名课本">函数与图像</strong><small id="book-meta">讲课台示例</small></div></div>
         <div id="book-actions" class="book-actions">
           <button type="button" id="pdf-export" class="quiet" disabled>保存 PDF</button>
           <button type="button" id="library-open" class="quiet">书架</button>
@@ -43,7 +43,7 @@
         <div id="pdf-tools" class="tools" aria-label="课本工具栏">
           <div class="tool-group" id="modes" aria-label="批注和选取">
             <button type="button" data-tool="read" aria-pressed="true" title="阅读和滚动">阅读</button>
-            <button type="button" data-tool="select" aria-pressed="false" title="拖动框选文字，或用浏览器选中文字">选文</button>
+            <button type="button" data-tool="select" aria-pressed="false" title="拖动框选截图">选文</button>
             <button type="button" data-tool="pen" aria-pressed="false" title="圆珠笔">批注笔</button>
             <button type="button" data-tool="marker" aria-pressed="false" title="荧光笔">荧光笔</button>
             <button type="button" data-tool="eraser" aria-pressed="false">橡皮</button>
@@ -90,9 +90,8 @@
       </div>
 
       <div class="selection-bar" id="selection-bar" hidden>
-        <span id="selection-note">框选课本文字，扫描版可直接识字。</span>
-        <button type="button" id="native-select" class="quiet" title="使用系统文字选区">系统选区</button>
-        <button type="button" id="use-selection" class="accent">引用选文</button>
+        <span id="selection-note">拖动框选课本区域，可以连续添加多张截图。</span>
+        <button type="button" id="use-selection" class="accent">添加截图</button>
       </div>
 
       <div class="reader" id="reader" tabindex="0" aria-label="课件页面">
@@ -100,7 +99,6 @@
         <template id="page-template">
           <section class="paper">
             <canvas class="pdf-canvas" aria-label="课本页面"></canvas>
-            <div class="textLayer" aria-label="课件文字"></div>
             <canvas class="ink-canvas" width="1" height="1" aria-label="手写批注"></canvas>
             <canvas class="ink-preview" width="0" height="0" aria-hidden="true"></canvas>
             <div class="selection-rect" hidden></div>
@@ -116,7 +114,7 @@
           <span id="page-total">/ —</span>
           <button id="next" type="button" aria-label="下一页" title="下一页">›</button>
         </div>
-        <button id="page-quote" type="button" class="quiet">引用整页</button>
+        <button id="page-quote" type="button" class="quiet">添加整页截图</button>
         <div class="zoom" aria-label="缩放">
           <button id="zoom-out" type="button" aria-label="缩小" title="缩小">−</button>
           <button id="zoom-reset" type="button" title="适应宽度">100%</button>
@@ -174,7 +172,7 @@
         <form id="ask" class="composer">
           <div id="excerpts" aria-label="本次引用"></div>
           <label class="sr-only" for="question">向讲解师提问</label>
-          <textarea id="question" rows="2" maxlength="6000" placeholder="输入你的问题，或先从左侧引用课本…"></textarea>
+          <textarea id="question" rows="2" maxlength="6000" placeholder="输入问题，或先从左侧添加课本截图…"></textarea>
           <p id="voice-status" role="status" hidden></p>
           <p id="chat-status" role="status" hidden></p>
           <div class="composer-actions">
@@ -198,6 +196,18 @@
     </div>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
+
+  <dialog id="book-rename">
+    <form id="book-rename-form">
+      <header><h2>重命名课本</h2><button type="button" class="quiet" data-close aria-label="关闭">×</button></header>
+      <div class="dialog-body">
+        <label>课本名称<input id="book-rename-title" maxlength="290" required></label>
+        <p id="book-rename-status" role="status" hidden></p>
+      </div>
+      <footer><button type="button" id="book-ai-title" class="outline">AI 总结命名</button>
+        <button type="submit" id="book-rename-save" class="accent">保存名称</button></footer>
+    </form>
+  </dialog>
 
   <dialog id="library">
     <header><h2>书架</h2><button type="button" data-close aria-label="关闭">×</button></header>
@@ -235,7 +245,7 @@
             <summary>如何接入飞书</summary>
             <ol>
               <li>在开发者后台选择「创建企业自建应用」。<a href="https://open.feishu.cn/app" target="_blank" rel="noopener noreferrer">打开飞书开放平台</a></li>
-              <li>在应用的「权限管理」中开通「创建及编辑新版文档」（<code>docx:document</code>）。上传批注 PDF 还需要「上传文件」（<code>drive:file:upload</code>）。启用机器人，并在「版本管理与发布」发布权限变更。</li>
+              <li>在应用的「权限管理」中开通「创建及编辑新版文档」（<code>docx:document</code>）。保存含截图的问答录还需「上传素材」相关权限。上传批注 PDF 还需要「上传文件」（<code>drive:file:upload</code>）。启用机器人，并在「版本管理与发布」发布权限变更。</li>
               <li>在飞书建一个内部群，把应用加为群机器人。在云空间找到问答录要存入的文件夹，将它分享给该群，权限设为「可管理」。<a href="https://www.feishu.cn/content/383321056779" target="_blank" rel="noopener noreferrer">查看飞书授权说明</a></li>
               <li>从应用的「凭证与基础信息」复制 App ID 和 App Secret。打开目标文件夹，从浏览器地址栏复制带有 <code>/drive/folder/</code> 的完整链接。</li>
             </ol>

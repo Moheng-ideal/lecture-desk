@@ -29,12 +29,14 @@ class RequestState {
 
 const requestId: RegExp = /^[0-9a-f-]{36}$/;
 const feishuBlocks: RegExp = /^https:\/\/open\.feishu\.cn\/open-apis\/docx\/v1\/documents\/[A-Za-z0-9]{1,100}\/blocks\/[A-Za-z0-9]{1,100}\/children\?client_token=[0-9a-f-]{36}$/;
+const feishuImageBlock: RegExp = /^https:\/\/open\.feishu\.cn\/open-apis\/docx\/v1\/documents\/[A-Za-z0-9]{1,100}\/blocks\/[A-Za-z0-9]{1,100}$/;
 const endpoints: string[] = [
   'https://api.deepseek.com/chat/completions',
   'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
   'https://open.feishu.cn/open-apis/docx/v1/documents',
 ];
 const pdfUploadUrl: string = 'https://open.feishu.cn/open-apis/drive/v1/files/upload_all';
+const mediaUploadUrl: string = 'https://open.feishu.cn/open-apis/drive/v1/medias/upload_all';
 const multipartType: RegExp = /^multipart\/form-data; boundary=[A-Za-z0-9-]{1,80}$/;
 
 export class DeskBridge {
@@ -73,8 +75,9 @@ export class DeskBridge {
   }
 
   startHttp(id: string, url: string, body: string, authorization: string, contentType: string): boolean {
-    const upload = url === pdfUploadUrl;
-    const allowed = upload ? multipartType.test(contentType) : endpoints.includes(url) || feishuBlocks.test(url);
+    const upload = url === pdfUploadUrl || url === mediaUploadUrl;
+    const patch = feishuImageBlock.test(url);
+    const allowed = upload ? multipartType.test(contentType) : endpoints.includes(url) || feishuBlocks.test(url) || patch;
     if (!requestId.test(id) || this.requests.has(id) || this.requests.size >= 6 ||
       body.length > (upload ? 28000000 : 4000000) || !body.length || authorization.length > 5000 ||
       /[\r\n]/.test(authorization) || !allowed) {
@@ -104,7 +107,7 @@ export class DeskBridge {
         if (operation.status) this.cancelHttp(id);
       });
       client.requestInStream(url, {
-        method: http.RequestMethod.POST,
+        method: patch ? http.RequestMethod.PATCH : http.RequestMethod.POST,
         header: headers,
         extraData: payload,
         usingCache: false,

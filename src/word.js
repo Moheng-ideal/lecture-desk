@@ -15,7 +15,7 @@ const excerpt = (text) => new Paragraph({
 export function createWord(title, records, figures = []) {
   const children = [
     heading(title, HeadingLevel.TITLE),
-    paragraph(`共 ${records.length} 条问答，包含问题、课本摘录及讲解。`),
+    paragraph(`共 ${records.length} 条问答，包含问题、课本截图或摘录及讲解。`),
   ];
   for (const [index, section] of recordSections(records).entries()) {
     children.push(
@@ -25,7 +25,13 @@ export function createWord(title, records, figures = []) {
       ...lines(section.question),
     );
     for (const quote of section.references) {
-      children.push(heading(quote.label, HeadingLevel.HEADING_2), excerpt(quote.text));
+      children.push(heading(quote.label, HeadingLevel.HEADING_2));
+      if (quote.image) {
+        const scale = Math.min(1, 518 / quote.width, 660 / quote.height);
+        children.push(new Paragraph({ alignment: AlignmentType.CENTER,
+          children: [new ImageRun({ type: 'jpg', data: quote.image,
+            transformation: { width: Math.max(1, Math.round(quote.width * scale)), height: Math.max(1, Math.round(quote.height * scale)) } })] }));
+      } else children.push(excerpt(quote.text));
     }
     children.push(heading('讲解', HeadingLevel.HEADING_2));
     for (const [blockIndex, block] of section.answer.entries()) {
