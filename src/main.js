@@ -784,7 +784,9 @@ for (const target of document.querySelectorAll('[data-close]')) target.onclick =
 $('pdf-open').onclick = () => $('pdf-file').click();
 $('book-fullscreen').onclick = () => setBookFullscreen(!$('workspace').hasAttribute('data-book-fullscreen'));
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !document.querySelector('dialog[open]')) setBookFullscreen(false);
+  if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+  if (!$('class-board').hidden) $('board-close').click();
+  else setBookFullscreen(false);
 });
 $('library-open').onclick = () => openLibrary().catch(failure);
 $('book-tab-add').onclick = () => openLibrary().catch(failure);

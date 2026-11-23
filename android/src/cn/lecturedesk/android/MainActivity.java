@@ -136,7 +136,8 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         view.evaluateJavascript("(function(){const dialog=document.querySelector('dialog[open]');" +
-            "if(dialog){dialog.close();return true;}const full=document.querySelector('#book-fullscreen[aria-pressed=true]');" +
+            "if(dialog){dialog.close();return true;}const board=document.querySelector('#class-board:not([hidden])');" +
+            "if(board){document.getElementById('board-close').click();return true;}const full=document.querySelector('#book-fullscreen[aria-pressed=true]');" +
             "if(full){full.click();return true;}return false;})()", handled -> {
                 if (!"true".equals(handled)) moveTaskToBack(true);
             });

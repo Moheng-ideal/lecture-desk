@@ -124,33 +124,6 @@
     </section>
     <div id="pane-divider" role="separator" aria-label="调整课本和问答区宽度" aria-orientation="vertical" tabindex="0" aria-valuemin="35" aria-valuemax="75" aria-valuenow="61"></div>
     <div id="right-pane" class="right-pane">
-      <aside id="class-board" aria-label="教学白板" hidden>
-        <header class="board-head">
-          <h2>白板</h2>
-          <div class="board-zoom" role="group" aria-label="缩放白板">
-            <button type="button" id="board-zoom-out" aria-label="缩小白板">−</button>
-            <button type="button" id="board-zoom-reset" aria-label="回到白板原点并重置缩放" title="回到原点">100%</button>
-            <button type="button" id="board-zoom-in" aria-label="放大白板">＋</button>
-          </div>
-          <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
-        </header>
-        <div class="board-tool-area">
-          <div class="board-tools" id="board-tools" aria-label="白板工具">
-            <button type="button" data-board-tool="pen" aria-pressed="true" title="触控笔写字，手指拖动画布">笔</button>
-            <button type="button" data-board-tool="marker" aria-pressed="false">荧光笔</button>
-            <button type="button" data-board-tool="eraser" aria-pressed="false" title="触控笔擦除，手指拖动画布">橡皮</button>
-            <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
-            <button type="button" id="board-ink-config" class="quiet" aria-controls="board-ink-panel" aria-expanded="false" aria-label="白板笔刷设置">笔刷设置</button>
-            <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
-            <button type="button" id="board-clear" class="quiet" disabled>清空</button>
-          </div>
-        </div>
-        <div id="board-surface">
-          <canvas id="board-ink" aria-label="白板画布"></canvas>
-          <canvas id="board-draft" aria-hidden="true"></canvas>
-        </div>
-      </aside>
-      <div id="board-divider" role="separator" aria-label="调整白板和讲解师高度" aria-orientation="horizontal" aria-controls="class-board" tabindex="0" aria-valuemin="25" aria-valuemax="65" aria-valuenow="46" hidden></div>
       <section class="chat-pane" aria-labelledby="chat-heading">
         <header class="chat-bar">
           <div class="assistant-mark" aria-hidden="true">✦</div>
@@ -185,6 +158,36 @@
       </section>
     </div>
   </main>
+  <aside id="class-board" aria-label="教学白板" hidden>
+    <header class="board-head">
+      <h2><button type="button" id="board-move" aria-label="白板，拖动或按方向键移动小窗" title="拖动移动白板">白板</button></h2>
+      <div class="board-zoom" role="group" aria-label="白板画布缩放">
+        <button type="button" id="board-zoom-out" aria-label="缩小白板">−</button>
+        <button type="button" id="board-zoom-reset" aria-label="回到白板原点并重置缩放" title="回到原点">100%</button>
+        <button type="button" id="board-zoom-in" aria-label="放大白板">＋</button>
+      </div>
+      <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
+    </header>
+    <div class="board-tool-area">
+      <div class="board-tools" id="board-tools" aria-label="白板工具">
+        <button type="button" data-board-tool="pen" aria-pressed="true" title="触控笔写字，手指拖动画布">笔</button>
+        <button type="button" data-board-tool="marker" aria-pressed="false">荧光笔</button>
+        <button type="button" data-board-tool="eraser" aria-pressed="false" title="触控笔擦除，手指拖动画布">橡皮</button>
+        <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
+        <button type="button" id="board-ink-config" class="quiet" aria-controls="board-ink-panel" aria-expanded="false" aria-label="白板笔刷设置">笔刷设置</button>
+        <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
+        <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+      </div>
+    </div>
+    <div id="board-surface">
+      <canvas id="board-ink" aria-label="白板画布"></canvas>
+      <canvas id="board-draft" aria-hidden="true"></canvas>
+    </div>
+    <button type="button" class="board-corner" data-board-resize="nw" aria-label="拖动左上角或按方向键调整窗口大小"></button>
+    <button type="button" class="board-corner" data-board-resize="ne" aria-label="拖动右上角或按方向键调整窗口大小"></button>
+    <button type="button" class="board-corner" data-board-resize="sw" aria-label="拖动左下角或按方向键调整窗口大小"></button>
+    <button type="button" class="board-corner" data-board-resize="se" aria-label="拖动右下角或按方向键调整窗口大小"></button>
+  </aside>
   <dialog id="pdf-save-dialog">
     <header><h2>保存批注 PDF</h2><button type="button" id="pdf-save-close" aria-label="关闭">×</button></header>
     <div class="pdf-save-body">

@@ -1,4 +1,5 @@
 import { inkContact, mixPoint, paintInkStroke, traceInk } from './ink.js';
+import { installBoardWindow } from './board-window.js';
 import { InkTools } from './ink-tools.js';
 import { readState, saveState } from './storage.js';
 
@@ -27,8 +28,6 @@ function centerBetween(a, b) {
 export function installWhiteboard({ notify }) {
   const id = (name) => document.getElementById(name);
   const board = id('class-board');
-  const workspace = id('workspace');
-  const divider = id('board-divider');
   const open = id('board-open');
   const surface = id('board-surface');
   const canvas = id('board-ink');
@@ -217,23 +216,32 @@ export function installWhiteboard({ notify }) {
   }
   new ResizeObserver(resize).observe(surface);
 
+  function stopInkInput() {
+    const captures = new Set(contacts.keys());
+    if (action) captures.add(action.id);
+    endAction(false);
+    if (pinch) rememberView();
+    contacts.clear();
+    pinch = null;
+    pinchTail = false;
+    for (const key of captures) if (canvas.hasPointerCapture(key)) canvas.releasePointerCapture(key);
+    tools.toggle(false);
+  }
+
+  const boardWindow = installBoardWindow(board, stopInkInput);
   function toggle(visible) {
-    if (!visible) {
-      const captures = new Set(contacts.keys());
-      if (action) captures.add(action.id);
-      endAction(false);
-      contacts.clear();
-      pinch = null;
-      pinchTail = false;
-      for (const key of captures) if (canvas.hasPointerCapture(key)) canvas.releasePointerCapture(key);
-      tools.toggle(false);
+    if (visible) boardWindow.refresh();
+    else {
+      boardWindow.finish();
+      stopInkInput();
       persist();
     }
     board.hidden = !visible;
-    divider.hidden = !visible;
-    workspace.toggleAttribute('data-board-open', visible);
     open.setAttribute('aria-expanded', String(visible));
-    if (visible) resize();
+    if (visible) {
+      resize();
+      id('board-move').focus({ preventScroll: true });
+    }
   }
   open.onclick = () => toggle(board.hidden);
   id('board-close').onclick = () => {
