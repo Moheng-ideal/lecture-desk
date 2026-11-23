@@ -31,16 +31,18 @@ function initialRect(bounds) {
   return { x: bounds.left + 15, y: bounds.bottom - height - 16, width, height };
 }
 
-function move(rect, corner, dx, dy, bounds) {
-  if (!corner) return fit({ ...rect, x: rect.x + dx, y: rect.y + dy }, bounds);
+function move(rect, edge, dx, dy, bounds) {
+  if (!edge) return fit({ ...rect, x: rect.x + dx, y: rect.y + dy }, bounds);
   const right = rect.x + rect.width;
   const bottom = rect.y + rect.height;
-  const west = corner.endsWith('w');
-  const north = corner.startsWith('n');
+  const west = edge.includes('w');
+  const north = edge.includes('n');
   const x = west ? clamp(rect.x + dx, bounds.left, right - Math.min(minWidth, rect.width)) : rect.x;
   const y = north ? clamp(rect.y + dy, bounds.top, bottom - Math.min(minHeight, rect.height)) : rect.y;
-  const width = west ? right - x : clamp(rect.width + dx, Math.min(minWidth, rect.width), bounds.right - x);
-  const height = north ? bottom - y : clamp(rect.height + dy, Math.min(minHeight, rect.height), bounds.bottom - y);
+  const width = west ? right - x : rect.width + (edge.includes('e')
+    ? clamp(dx, Math.min(minWidth, rect.width) - rect.width, bounds.right - right) : 0);
+  const height = north ? bottom - y : rect.height + (edge.includes('s')
+    ? clamp(dy, Math.min(minHeight, rect.height) - rect.height, bounds.bottom - bottom) : 0);
   return { x, y, width, height };
 }
 
@@ -75,9 +77,9 @@ export function installBoardWindow(board, stopInkInput) {
     if (event.currentTarget === heading && event.target.closest('button:not(#board-move)')) return;
     stopInkInput();
     const handle = event.currentTarget;
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, rect, handle, corner: handle.dataset.boardResize };
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, rect, handle, edge: handle.dataset.boardResize };
     handle.setPointerCapture(event.pointerId);
-    board.toggleAttribute('data-moving-window', !drag.corner);
+    board.toggleAttribute('data-moving-window', !drag.edge);
     event.preventDefault();
   }
 
@@ -85,7 +87,7 @@ export function installBoardWindow(board, stopInkInput) {
     if (drag?.id !== event.pointerId) return;
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
-    pending = move(drag.rect, drag.corner, dx, dy, viewportBounds());
+    pending = move(drag.rect, drag.edge, dx, dy, viewportBounds());
     if (!frame) frame = requestAnimationFrame(() => {
       frame = null;
       paint(pending);
