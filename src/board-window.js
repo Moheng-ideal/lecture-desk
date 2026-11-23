@@ -1,5 +1,3 @@
-import { readState, saveState } from './storage.js';
-
 const margin = 8;
 const minWidth = 300;
 const minHeight = 195;
@@ -23,33 +21,39 @@ function fit(rect, bounds) {
   return { x: clamp(rect.x, left, right - width), y: clamp(rect.y, top, bottom - height), width, height };
 }
 
-function initialRect(bounds) {
+function initialRect(bounds, pane) {
   const availableWidth = bounds.right - bounds.left;
   const availableHeight = bounds.bottom - bounds.top;
-  const width = Math.min(620, availableWidth * (availableWidth < 720 ? .88 : .49));
+  const width = Math.min(540, pane.width ? Math.max(minWidth, pane.width - 24) : availableWidth * .88);
   const height = Math.min(490, availableHeight * .55);
-  return { x: bounds.left + 15, y: bounds.bottom - height - 16, width, height };
+  return fit({
+    x: (pane.width ? pane.right : bounds.right) - width - 12,
+    y: (pane.height ? pane.top : bounds.top) + 62,
+    width, height,
+  }, bounds);
 }
 
 function move(rect, edge, dx, dy, bounds) {
-  if (!edge) return fit({ ...rect, x: rect.x + dx, y: rect.y + dy }, bounds);
+  if (!edge) return { ...rect, x: rect.x + dx, y: rect.y + dy };
   const right = rect.x + rect.width;
   const bottom = rect.y + rect.height;
+  const maxWidth = Math.max(rect.width, bounds.right - bounds.left);
+  const maxHeight = Math.max(rect.height, bounds.bottom - bounds.top);
   const west = edge.includes('w');
   const north = edge.includes('n');
-  const x = west ? clamp(rect.x + dx, bounds.left, right - Math.min(minWidth, rect.width)) : rect.x;
-  const y = north ? clamp(rect.y + dy, bounds.top, bottom - Math.min(minHeight, rect.height)) : rect.y;
+  const x = west ? clamp(rect.x + dx, right - maxWidth, right - Math.min(minWidth, rect.width)) : rect.x;
+  const y = north ? clamp(rect.y + dy, bottom - maxHeight, bottom - Math.min(minHeight, rect.height)) : rect.y;
   const width = west ? right - x : rect.width + (edge.includes('e')
-    ? clamp(dx, Math.min(minWidth, rect.width) - rect.width, bounds.right - right) : 0);
+    ? clamp(dx, Math.min(minWidth, rect.width) - rect.width, maxWidth - rect.width) : 0);
   const height = north ? bottom - y : rect.height + (edge.includes('s')
-    ? clamp(dy, Math.min(minHeight, rect.height) - rect.height, bounds.bottom - bottom) : 0);
+    ? clamp(dy, Math.min(minHeight, rect.height) - rect.height, maxHeight - rect.height) : 0);
   return { x, y, width, height };
 }
 
 export function installBoardWindow(board, stopInkInput) {
   const heading = board.querySelector('.board-head');
   const title = board.querySelector('#board-move');
-  let preferred;
+  const pane = document.getElementById("right-pane");
   let rect;
   let drag;
   let pending;
@@ -62,14 +66,9 @@ export function installBoardWindow(board, stopInkInput) {
     board.style.setProperty('--board-window-height', next.height + 'px');
   }
 
-  function refresh() {
-    const bounds = viewportBounds();
-    paint(fit(preferred || initialRect(bounds), bounds));
-  }
-
-  function remember() {
-    preferred = rect;
-    saveState('whiteboardWindow', preferred).catch(() => {});
+  function reset() {
+    finish();
+    paint(initialRect(viewportBounds(), pane.getBoundingClientRect()));
   }
 
   function start(event) {
@@ -80,6 +79,7 @@ export function installBoardWindow(board, stopInkInput) {
     drag = { id: event.pointerId, x: event.clientX, y: event.clientY, rect, handle, edge: handle.dataset.boardResize };
     handle.setPointerCapture(event.pointerId);
     board.toggleAttribute('data-moving-window', !drag.edge);
+    if (drag.edge) handle.dataset.resizing = '';
     event.preventDefault();
   }
 
@@ -95,23 +95,27 @@ export function installBoardWindow(board, stopInkInput) {
     });
   }
 
-  function finish() {
+  function finish(event) {
     if (!drag) return;
-    const { id, handle, rect: from } = drag;
+    const { id, handle, x, y, edge } = drag;
     drag = null;
     if (frame) cancelAnimationFrame(frame);
     frame = null;
+    if (pending && event && !edge) {
+      const view = viewportBounds();
+      const dx = event.clientX - x;
+      const dy = event.clientY - y;
+      // A finger cannot travel beyond the glass. Release at the outer edge to move the whole window past it.
+      if (dx < -40 && event.clientX <= view.left) pending.x = view.left - margin - pending.width;
+      if (dx > 40 && event.clientX >= view.right) pending.x = view.right + margin;
+      if (dy < -40 && event.clientY <= view.top) pending.y = view.top - margin - pending.height;
+      if (dy > 40 && event.clientY >= view.bottom) pending.y = view.bottom + margin;
+    }
     if (pending) paint(pending);
     pending = null;
     board.removeAttribute('data-moving-window');
+    delete handle.dataset.resizing;
     if (handle.hasPointerCapture(id)) handle.releasePointerCapture(id);
-    if (rect.x !== from.x || rect.y !== from.y || rect.width !== from.width || rect.height !== from.height) remember();
-  }
-
-  function resizeViewport() {
-    if (board.hidden) return;
-    finish();
-    refresh();
   }
 
   const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -121,7 +125,7 @@ export function installBoardWindow(board, stopInkInput) {
     handle.onpointerup = (event) => {
       if (drag?.id !== event.pointerId) return;
       onMove(event);
-      finish();
+      finish(event);
     };
     handle.onpointercancel = handle.onlostpointercapture = (event) => {
       if (drag?.id === event.pointerId) finish();
@@ -134,18 +138,8 @@ export function installBoardWindow(board, stopInkInput) {
       stopInkInput();
       const distance = event.shiftKey ? 24 : 8;
       paint(move(rect, handle.dataset.boardResize, step[0] * distance, step[1] * distance, viewportBounds()));
-      remember();
     };
   }
 
-  window.addEventListener('resize', resizeViewport);
-  window.visualViewport?.addEventListener('resize', resizeViewport);
-  window.visualViewport?.addEventListener('scroll', resizeViewport);
-  readState('whiteboardWindow').then((saved) => {
-    if (!preferred && saved && [saved.x, saved.y, saved.width, saved.height].every(Number.isFinite)) {
-      preferred = saved;
-      if (!board.hidden && !drag) refresh();
-    }
-  }).catch(() => {});
-  return { refresh, finish };
+  return { reset, finish };
 }

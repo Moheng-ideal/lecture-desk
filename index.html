@@ -94,17 +94,20 @@
         <button type="button" id="use-selection" class="accent">添加截图</button>
       </div>
 
-      <div class="reader" id="reader" tabindex="0" aria-label="课件页面">
-        <div id="page-stage"><div id="page-stack"></div></div>
-        <template id="page-template">
-          <section class="paper">
-            <canvas class="pdf-canvas" aria-label="课本页面"></canvas>
-            <canvas class="ink-canvas" width="1" height="1" aria-label="手写批注"></canvas>
-            <canvas class="ink-preview" width="0" height="0" aria-hidden="true"></canvas>
-            <div class="selection-rect" hidden></div>
-          </section>
-        </template>
-        <p id="reader-status" class="reader-status" role="status">正在打开课本…</p>
+      <div class="scroll-shell">
+        <div class="reader" id="reader" tabindex="0" aria-label="课件页面">
+          <div id="page-stage"><div id="page-stack"></div></div>
+          <template id="page-template">
+            <section class="paper">
+              <canvas class="pdf-canvas" aria-label="课本页面"></canvas>
+              <canvas class="ink-canvas" width="1" height="1" aria-label="手写批注"></canvas>
+              <canvas class="ink-preview" width="0" height="0" aria-hidden="true"></canvas>
+              <div class="selection-rect" hidden></div>
+            </section>
+          </template>
+          <p id="reader-status" class="reader-status" role="status">正在打开课本…</p>
+        </div>
+        <div class="scroll-thumb" role="scrollbar" tabindex="0" aria-label="课本滚动位置" aria-controls="reader" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden></div>
       </div>
 
       <footer class="reader-footer">
@@ -130,23 +133,28 @@
           <div><h2 id="chat-heading">讲解师</h2><p id="connection-state">DeepSeek · 检查连接</p></div>
           <button type="button" id="teach-page" class="outline">讲解本页</button>
         </header>
-        <div id="chat-scroll" class="chat-scroll" tabindex="0">
-          <div id="welcome">
-            <div class="welcome-mark" aria-hidden="true">✦</div>
-            <h3>今天想讲哪一页？</h3>
-            <p>选一段课本文字提问，或请讲解师从当前页开始逐页讲解。</p>
-            <div class="suggestions">
-              <button type="button" data-suggest="请结合这一页，讲解核心概念和它在例题中的用法。">讲解核心概念</button>
-              <button type="button" data-suggest="请根据这一页出一道检查理解的小题，先不要给答案。">出一道随堂题</button>
+        <div class="scroll-shell">
+          <div id="chat-scroll" class="chat-scroll" tabindex="0">
+            <div id="welcome">
+              <div class="welcome-mark" aria-hidden="true">✦</div>
+              <h3>今天想讲哪一页？</h3>
+              <p>选一段课本文字提问，或请讲解师从当前页开始逐页讲解。</p>
+              <div class="suggestions">
+                <button type="button" data-suggest="请结合这一页，讲解核心概念和它在例题中的用法。">讲解核心概念</button>
+                <button type="button" data-suggest="请根据这一页出一道检查理解的小题，先不要给答案。">出一道随堂题</button>
+              </div>
             </div>
+            <ol id="messages" aria-label="问答对话"></ol>
           </div>
-          <ol id="messages" aria-label="问答对话"></ol>
+          <div class="scroll-thumb" role="scrollbar" tabindex="0" aria-label="讲解区滚动位置" aria-controls="chat-scroll" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden></div>
         </div>
         <form id="ask" class="composer">
           <div id="excerpts" aria-label="本次引用"></div>
-          <label class="sr-only" for="question">向讲解师提问</label>
-          <textarea id="question" rows="2" maxlength="6000" placeholder="输入问题，或先从左侧添加课本截图…"></textarea>
-          <p id="voice-status" role="status" hidden></p>
+          <div class="question-entry">
+            <label class="sr-only" for="question">向讲解师提问</label>
+            <textarea id="question" rows="2" maxlength="6000" placeholder="输入问题，或先从左侧添加课本截图…"></textarea>
+            <p id="voice-status" role="status" hidden></p>
+          </div>
           <p id="chat-status" role="status" hidden></p>
           <div class="composer-actions">
             <button type="button" id="teach-next" class="quiet">下一页开讲</button>
@@ -158,39 +166,41 @@
       </section>
     </div>
   </main>
-  <aside id="class-board" aria-label="教学白板" hidden>
-    <header class="board-head">
-      <h2><button type="button" id="board-move" aria-label="白板，拖动或按方向键移动小窗" title="拖动移动白板">白板</button></h2>
-      <div class="board-zoom" role="group" aria-label="白板画布缩放">
-        <button type="button" id="board-zoom-out" aria-label="缩小白板">−</button>
-        <button type="button" id="board-zoom-reset" aria-label="回到白板原点并重置缩放" title="回到原点">100%</button>
-        <button type="button" id="board-zoom-in" aria-label="放大白板">＋</button>
+  <div id="board-layer">
+    <aside id="class-board" aria-label="教学白板" hidden>
+      <header class="board-head">
+        <h2><button type="button" id="board-move" aria-label="白板，拖动或按方向键移动小窗" title="拖动移动白板">白板</button></h2>
+        <div class="board-zoom" role="group" aria-label="白板画布缩放">
+          <button type="button" id="board-zoom-out" aria-label="缩小白板">−</button>
+          <button type="button" id="board-zoom-reset" aria-label="回到白板原点并重置缩放" title="回到原点">100%</button>
+          <button type="button" id="board-zoom-in" aria-label="放大白板">＋</button>
+        </div>
+        <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
+      </header>
+      <div class="board-tool-area">
+        <div class="board-tools" id="board-tools" aria-label="白板工具">
+          <button type="button" data-board-tool="pen" aria-pressed="true" title="触控笔写字，手指拖动画布">笔</button>
+          <button type="button" data-board-tool="marker" aria-pressed="false">荧光笔</button>
+          <button type="button" data-board-tool="eraser" aria-pressed="false" title="触控笔擦除，手指拖动画布">橡皮</button>
+          <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
+          <button type="button" id="board-ink-config" class="quiet" aria-controls="board-ink-panel" aria-expanded="false" aria-label="白板笔刷设置">笔刷设置</button>
+          <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
+          <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+        </div>
       </div>
-      <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
-    </header>
-    <div class="board-tool-area">
-      <div class="board-tools" id="board-tools" aria-label="白板工具">
-        <button type="button" data-board-tool="pen" aria-pressed="true" title="触控笔写字，手指拖动画布">笔</button>
-        <button type="button" data-board-tool="marker" aria-pressed="false">荧光笔</button>
-        <button type="button" data-board-tool="eraser" aria-pressed="false" title="触控笔擦除，手指拖动画布">橡皮</button>
-        <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
-        <button type="button" id="board-ink-config" class="quiet" aria-controls="board-ink-panel" aria-expanded="false" aria-label="白板笔刷设置">笔刷设置</button>
-        <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
-        <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+      <div id="board-surface">
+        <canvas id="board-ink" aria-label="白板画布"></canvas>
+        <canvas id="board-draft" aria-hidden="true"></canvas>
       </div>
-    </div>
-    <div id="board-surface">
-      <canvas id="board-ink" aria-label="白板画布"></canvas>
-      <canvas id="board-draft" aria-hidden="true"></canvas>
-    </div>
-    <button type="button" class="board-edge" data-board-resize="w" aria-label="拖动左边缘或按方向键调整窗口宽度"></button>
-    <button type="button" class="board-edge" data-board-resize="e" aria-label="拖动右边缘或按方向键调整窗口宽度"></button>
-    <button type="button" class="board-edge" data-board-resize="s" aria-label="拖动下边缘或按方向键调整窗口高度"></button>
-    <button type="button" class="board-corner" data-board-resize="nw" aria-label="拖动左上角或按方向键调整窗口大小"></button>
-    <button type="button" class="board-corner" data-board-resize="ne" aria-label="拖动右上角或按方向键调整窗口大小"></button>
-    <button type="button" class="board-corner" data-board-resize="sw" aria-label="拖动左下角或按方向键调整窗口大小"></button>
-    <button type="button" class="board-corner" data-board-resize="se" aria-label="拖动右下角或按方向键调整窗口大小"></button>
-  </aside>
+      <button type="button" class="board-edge" data-board-resize="w" aria-label="拖动左边缘或按方向键调整窗口宽度"></button>
+      <button type="button" class="board-edge" data-board-resize="e" aria-label="拖动右边缘或按方向键调整窗口宽度"></button>
+      <button type="button" class="board-edge" data-board-resize="s" aria-label="拖动下边缘或按方向键调整窗口高度"></button>
+      <button type="button" class="board-corner" data-board-resize="nw" aria-label="拖动左上角或按方向键调整窗口大小"></button>
+      <button type="button" class="board-corner" data-board-resize="ne" aria-label="拖动右上角或按方向键调整窗口大小"></button>
+      <button type="button" class="board-corner" data-board-resize="sw" aria-label="拖动左下角或按方向键调整窗口大小"></button>
+      <button type="button" class="board-corner" data-board-resize="se" aria-label="拖动右下角或按方向键调整窗口大小"></button>
+    </aside>
+  </div>
   <dialog id="pdf-save-dialog">
     <header><h2>保存批注 PDF</h2><button type="button" id="pdf-save-close" aria-label="关闭">×</button></header>
     <div class="pdf-save-body">

@@ -66,8 +66,10 @@
 body { margin: 0; }
 [hidden] { display: none !important; }
 button, input, textarea, select { font: inherit; color: inherit; }
-button { min-height: 42px; border: 1px solid transparent; border-radius: 9px; background: transparent; padding: 0 12px; cursor: pointer; white-space: nowrap; font-size: .875rem; font-weight: 600; }
+button { -webkit-tap-highlight-color: transparent; min-height: 42px; border: 1px solid transparent; border-radius: 9px; background: transparent; padding: 0 12px; cursor: pointer; white-space: nowrap; font-size: .875rem; font-weight: 600; }
 button:hover:not(:disabled) { background: var(--hover); }
+button:active:not(:disabled) { filter: brightness(.92); }
+button:focus:not(:focus-visible) { outline: none; }
 button:disabled { opacity: .4; cursor: default; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
 button.accent { background: var(--brick); color: var(--accent-text); }
@@ -156,7 +158,7 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .selection-bar { min-height: 48px; }
 .selection-bar span { font-size: .8rem; color: var(--muted); flex: 1; min-width: 100px; }
 .selection-bar button { min-height: 36px; }
-.reader { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; scrollbar-gutter: stable; touch-action: pan-x pan-y; padding: 10px clamp(12px, 2vw, 28px); background: var(--desk); scrollbar-color: var(--muted) transparent; }
+.reader { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; touch-action: pan-x pan-y; padding: 10px clamp(12px, 2vw, 28px); background: var(--desk); }
 .reader[data-pinching] { overflow: hidden; }
 #page-stage { min-width: max-content; }
 #page-stack { display: grid; justify-items: center; gap: 12px; min-width: max-content; }
@@ -181,7 +183,7 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .zoom button { padding: 0 9px; }
 .right-pane { grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
 .chat-pane { background: var(--surface); }
-.chat-scroll { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; padding: 22px clamp(16px, 2.4vw, 34px) 12px; scrollbar-color: #c2bcb1 transparent; }
+.chat-scroll { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; padding: 22px clamp(16px, 2.4vw, 34px) 12px; }
 #welcome { width: min(100%, 380px); margin: clamp(18px, 12vh, 122px) auto 0; }
 .welcome-mark { background: var(--accent-soft); color: var(--green); width: 58px; height: 58px; border-radius: 19px; display: grid; place-items: center; font-size: 1.8rem; }
 #welcome h3 { margin: 19px 0 10px; font-size: clamp(1.37rem, 2.15vw, 1.85rem); font-weight: 700; font-family: "Noto Serif SC", "Songti SC", SimSun, serif; }
@@ -218,12 +220,19 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 #teach-next { margin-right: auto; }
 #chat-status, #export-status, #voice-status { color: var(--brick); font-size: .85rem; overflow-wrap: anywhere; margin: 7px 6px; }
 .excerpt-chip { display: flex; align-items: center; gap: 5px; background: var(--accent-soft); border-radius: 8px; margin: 3px 0; padding-left: 8px; color: var(--green); }
+#board-layer {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 12;
+}
 #class-board {
+  pointer-events: auto;
   --board-corner-size: 28px;
   --board-edge-size: 15px;
-  position: fixed;
+  position: absolute;
   inset: 0 auto auto 0;
-  z-index: 12;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -269,7 +278,9 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
   touch-action: none;
 }
 .board-corner { width: var(--board-corner-size); height: var(--board-corner-size); }
-.board-edge:hover:not(:disabled) { background: transparent; color: var(--brick); }
+:is(.board-corner, .board-edge):hover:not(:disabled) { background: transparent; }
+:is(.board-corner, .board-edge)::after { opacity: 0; transition: opacity 120ms ease; }
+:is(.board-corner, .board-edge):is([data-resizing], :focus-visible)::after { opacity: .62; }
 .board-edge::after {
   content: '';
   position: absolute;
@@ -440,3 +451,45 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .app-version { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 #settings-changelog-content { max-height: 48vh; overflow: auto; padding: 0 4px; }
 #settings-changelog-content h2 { font-size: 1rem; }
+
+.scroll-shell { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.scroll-shell > :is(.reader, .chat-scroll) { scrollbar-width: none; }
+.scroll-shell > :is(.reader, .chat-scroll)::-webkit-scrollbar { display: none; }
+.scroll-thumb {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: 0;
+  width: 22px;
+  opacity: 0;
+  pointer-events: none;
+  cursor: grab;
+  touch-action: none;
+  transition: opacity 180ms ease;
+}
+.scroll-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0 3px 0 auto;
+  width: 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 58%, transparent);
+}
+.scroll-thumb:is([data-visible], [data-dragging], :focus-visible) { opacity: 1; pointer-events: auto; }
+.scroll-thumb[data-dragging] { cursor: grabbing; }
+.scroll-thumb[data-dragging]::after { width: 8px; }
+.question-entry { position: relative; }
+.question-entry > textarea { display: block; }
+.composer[data-voice-active] #question { visibility: hidden; }
+.composer[data-voice-active] #voice-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  text-align: center;
+}
+.composer[data-voice-cancel] #voice-status { background: var(--peach); font-weight: 650; }

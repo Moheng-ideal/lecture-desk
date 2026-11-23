@@ -6,6 +6,7 @@ import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRec
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
 import { formatDate, groupRecords, sourceLabel } from './records.js';
 import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
+import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers } from './layout.js';
 import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
@@ -886,6 +887,8 @@ for (const target of document.querySelectorAll('[data-suggest]')) target.onclick
 
 reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
 installDividers();
+installScrollThumb($('reader'));
+installScrollThumb($('chat-scroll'));
 installTheme();
 installWhiteboard({ notify: feedback });
 if (nativeApp) $('export-docx').textContent = '保存 Word';

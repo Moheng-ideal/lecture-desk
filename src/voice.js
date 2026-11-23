@@ -38,14 +38,29 @@ export function installVoice({ canSend, send } = {}) {
   const button = document.getElementById('voice-input');
   const question = document.getElementById('question');
   const status = document.getElementById('voice-status');
+  const composer = button.closest('form');
+  const cancelDistance = 64;
   const hold = import.meta.env?.MODE === 'android';
   let current;
   if (hold) {
     button.dataset.holdVoice = '';
-    button.title = '按住录音，松手后用 DeepSeek 转写并发送';
+    button.title = '按住录音，松手发送，上滑取消';
   } else if (!nativeApp) button.title = '使用浏览器语音识别，取决于浏览器及其语音服务';
 
   function show(message = '') {
+    if (hold) {
+      composer.toggleAttribute('data-voice-active', Boolean(current));
+      composer.toggleAttribute('data-voice-cancel', Boolean(current?.cancelReady));
+      if (current?.cancelReady) message = '松手取消，向下滑可继续录音。';
+      else if (current && !message) {
+        message = {
+          starting: '正在开启麦克风…',
+          recording: '正在录音。松手发送，上滑取消。',
+          limit: '已录满 30 秒。松手发送，上滑取消。',
+          processing: 'DeepSeek 正在转写…',
+        }[current.phase];
+      }
+    }
     status.textContent = message;
     status.hidden = !message;
     button.setAttribute('aria-pressed', String(!!current));
@@ -54,6 +69,7 @@ export function installVoice({ canSend, send } = {}) {
       button.textContent = {
         starting: '正在开启…', recording: '松手发送', limit: '松手发送', processing: '正在转写…',
       }[current?.phase] || '按住说话';
+      if (current?.cancelReady) button.textContent = '松手取消';
     } else button.textContent = current ? '结束语音' : '语音';
   }
 
@@ -112,14 +128,15 @@ export function installVoice({ canSend, send } = {}) {
     } catch { cancel('无法完成语音输入，请重试。'); }
   }
 
-  async function start(pointer) {
+  async function start(pointer, startY) {
     if (current) return;
     if (hold && !canSend()) {
       show('请等讲解结束后再使用语音。');
       return;
     }
-    const session = { id: newId(), pointer, parts: [], partial: '', phase: 'starting' };
+    const session = { id: newId(), pointer, startY, parts: [], partial: '', phase: 'starting' };
     current = session;
+    if (hold) question.blur();
     if (pointer != null) button.setPointerCapture(pointer);
     show('正在开启麦克风…');
     try {
@@ -137,11 +154,11 @@ export function installVoice({ canSend, send } = {}) {
         if (current !== session) return;
         if (kind === 'voice-start') {
           session.phase = 'recording';
-          show(hold ? '正在录音，松手发送。' : '正在听写，请说话。');
+          show(hold ? '' : '正在听写，请说话。');
         } else if (kind === 'voice-limit') {
           if (session.phase !== 'processing') {
             session.phase = 'limit';
-            show('已录满 30 秒，松手发送。');
+            show();
           }
         } else if (kind === 'voice-processing') {
           session.phase = 'processing';
@@ -167,12 +184,25 @@ export function installVoice({ canSend, send } = {}) {
     button.onpointerdown = (event) => {
       if (event.button !== 0 || current) return;
       event.preventDefault();
-      start(event.pointerId);
+      start(event.pointerId, event.clientY);
+    };
+    button.onpointermove = (event) => {
+      if (current?.pointer !== event.pointerId) return;
+      const cancelReady = current.startY - event.clientY >= cancelDistance;
+      if (cancelReady !== Boolean(current.cancelReady)) {
+        current.cancelReady = cancelReady;
+        show();
+      }
     };
     button.onpointerup = (event) => {
       if (current?.pointer !== event.pointerId) return;
+      const cancelReady = current.startY - event.clientY >= cancelDistance;
       current.pointer = undefined;
-      finish();
+      if (cancelReady) cancel('录音已取消。');
+      else {
+        current.cancelReady = false;
+        finish();
+      }
     };
     button.onpointercancel = button.onlostpointercapture = (event) => {
       if (current?.pointer === event.pointerId) cancel('录音已取消。');
@@ -204,5 +234,6 @@ export function installVoice({ canSend, send } = {}) {
     if (document.hidden && (hold || current?.phase === 'recording')) cancel();
   });
   window.addEventListener('pagehide', () => cancel());
+  show();
   return { cancel };
 }

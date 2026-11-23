@@ -230,7 +230,7 @@ export function installWhiteboard({ notify }) {
 
   const boardWindow = installBoardWindow(board, stopInkInput);
   function toggle(visible) {
-    if (visible) boardWindow.refresh();
+    if (visible) boardWindow.reset();
     else {
       boardWindow.finish();
       stopInkInput();
@@ -243,7 +243,7 @@ export function installWhiteboard({ notify }) {
       id('board-move').focus({ preventScroll: true });
     }
   }
-  open.onclick = () => toggle(board.hidden);
+  open.onclick = () => { stopInkInput(); toggle(true); };
   id('board-close').onclick = () => {
     toggle(false);
     open.focus();
