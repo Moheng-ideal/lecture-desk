@@ -8,7 +8,7 @@
 
 ## 下载安装
 
-**[下载讲课台 v0.7.4（Android APK）](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.7.4-android/lecture-desk-android-0.7.4.apk)** · [查看发布记录](https://github.com/Moheng-ideal/lecture-desk/releases) · [更新日志](CHANGELOG.md)
+**[下载讲课台 v0.7.5（Android APK）](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.7.5-android/lecture-desk-android-0.7.5.apk)** · [查看发布记录](https://github.com/Moheng-ideal/lecture-desk/releases) · [更新日志](CHANGELOG.md)
 
 - Android 平板下载 APK 后，打开文件并按系统提示安装。
 - HarmonyOS 5.0 及以上的华为平板，可在支持的机型上通过「卓易通」打开 APK 并尝试安装，兼容性以设备实测为准。开发者也可以参考[鸿蒙工程及真机签名说明](harmony/README.md)。
@@ -16,7 +16,7 @@
 ## 主要功能
 
 - **课件阅读与批注**。导入 PDF、Word 和 PPT，通过标签页切换多份课件。支持连续滚动、双指缩放、触控笔批注和框选截图。可以双击标签页改名，或让 AI 读图建议名称。带批注的课件可导出为 PDF 或上传飞书云盘。
-- **白板**。点顶部「白板」打开浮动小窗，拖动标题栏移动，拖左边、右边或下边可单独调整宽度或高度，拖四角可同时调整两个方向。小窗外的课本与讲解区仍可操作。白板画布支持平移、缩放、压感笔刷以及点擦、整笔擦和圈选擦除。
+- **白板**。点顶部「白板」打开浮动小窗，默认在讲解区打开。拖动标题栏可把小窗移出屏幕，再点顶部「白板」即可复位。拖左右下边或四角可调整大小。小窗外的课本与讲解区仍可操作。白板画布支持平移、缩放、压感笔刷以及点擦、整笔擦和圈选擦除。
 - **DeepSeek 讲解师**。可直接分析课件截图或讲解当前页，每次提问最多带 8 张截图。内置公式排版和教学示意图，公式随回答生成显示。可设置自定义提示词和用户画像。Android 版支持按住录音，松手后由 DeepSeek 转写并提问。
 - **问答录**。问题、课件截图、历史文字引用和 AI 回答可按课本折叠查看，支持整本或逐条选择，导出为 Word 或保存为可编辑的飞书云文档。
 
@@ -58,6 +58,6 @@ git tag --list
 
 通过 Git 提交并打版本标签。`.env`、编译产物、课本和个人问答数据均不进入版本库。
 
-Android APK 可用「按住说话」按钮录音，松手后由 DeepSeek 转写并直接向讲解师提问。首次使用需要允许麦克风权限，并在设置中填写现有的 DeepSeek API Key。单段录音最多 30 秒，松手后上传，DeepSeek 按音频时长计费。 [DeepSeek 语音转文字](https://api-docs.deepseek.com/guides/asr/)
+Android APK 可用「按住说话」按钮录音，松手后由 DeepSeek 转写并直接向讲解师提问。按住时向上滑，看到「松手取消」后松手即可丢弃录音。首次使用需要允许麦克风权限，并在设置中填写现有的 DeepSeek API Key。单段录音最多 30 秒，松手后上传，DeepSeek 按音频时长计费。 [DeepSeek 语音转文字](https://api-docs.deepseek.com/guides/asr/)
 
 内置示例课本为原创，用 [Noto Sans SC](https://github.com/google/fonts/tree/main/ofl/notosanssc) 字体生成。样书和快捷方式图标可以用 `scripts/sample.py` 重新生成，参数为 Noto Sans SC TrueType 字体路径，需要 ReportLab、Pillow 和 FontTools。
