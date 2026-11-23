@@ -1,5 +1,5 @@
 import { handleApi } from '../server/api.mjs';
-import { blobBase64 } from './api.js';
+import { blobBase64, getConnections } from './api.js';
 
 const pending = new Map();
 const events = 'lecture-desk-native';
@@ -123,14 +123,17 @@ export async function requestFromHarmony(path, options = {}) {
 
 export async function harmonyVoice() {
   const native = await bridge();
+  const cloud = typeof native.startCloudVoice === 'function';
   return {
     start(id, onEvent) {
+      const key = getConnections().deepseek;
+      if (cloud && !key) throw new Error('请在设置中配置 DeepSeek API Key，再使用语音提问。');
       pending.set(id, ({ kind, value }) => {
         if (kind === 'voice-done' || kind === 'voice-error') pending.delete(id);
         onEvent(kind, value);
       });
       try {
-        if (native.startVoice(id)) return;
+        if (cloud ? native.startCloudVoice(id, key) : native.startVoice(id)) return;
         throw new Error('无法开始语音输入。');
       } catch (error) {
         pending.delete(id);

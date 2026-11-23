@@ -20,7 +20,10 @@ const bookTitles = new Map([[sample.id, sample.title]]);
 let openBooks = [];
 let renamedBooks = new Map();
 let rename;
-const voice = installVoice();
+const voice = installVoice({
+  canSend: () => !state.stream && !changingBook,
+  send: (text) => ask(text, state.references, { preserveDraft: true }),
+});
 let reader;
 let toastTimeout;
 let changingBook;
@@ -511,7 +514,7 @@ function precedingTurns(question, references, preferences) {
   return turns;
 }
 
-async function ask(question, references = state.references) {
+async function ask(question, references = state.references, { preserveDraft = false } = {}) {
   await Promise.all([credentialsReady, preferencesReady]);
   if (state.stream || changingBook) return;
   references = currentReferences(references, state.book.id, bookTitles);
@@ -537,7 +540,7 @@ async function ask(question, references = state.references) {
   state.failed?.forEach((node) => node.remove());
   state.failed = null;
   state.references = [];
-  $('question').value = '';
+  if (!preserveDraft) $('question').value = '';
   displayExcerpts();
   status('chat-status');
   const user = userCard(record);
@@ -581,6 +584,7 @@ async function ask(question, references = state.references) {
 
 async function teach(question, next = false) {
   if (state.stream || changingBook || !reader.rendered) return;
+  voice.cancel();
   $('teach-page').disabled = true;
   $('teach-next').disabled = true;
   try {

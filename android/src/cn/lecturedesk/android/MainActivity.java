@@ -198,7 +198,7 @@ public final class MainActivity extends Activity {
                 });
             }
         }
-        @JavascriptInterface public boolean startVoice(String request) { return !destroyed && speech.start(request); }
+        @JavascriptInterface public boolean startCloudVoice(String request, String key) { return !destroyed && speech.start(request, key); }
         @JavascriptInterface public void finishVoice(String request) { runOnUiThread(() -> speech.finish(request)); }
         @JavascriptInterface public void cancelVoice(String request) { runOnUiThread(() -> speech.cancel(request)); }
     }

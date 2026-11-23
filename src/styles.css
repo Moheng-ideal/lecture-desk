@@ -419,3 +419,20 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 #book-title, .book-tab button { touch-action: manipulation; }
 #book-title { cursor: text; }
 #book-rename-status { margin-top: 10px; }
+
+#voice-input[data-hold-voice] { touch-action: none; user-select: none; }
+#voice-input[data-hold-voice][aria-pressed="true"] {
+  background: var(--peach);
+  border-color: var(--brick);
+  color: var(--brick);
+}
+#voice-input[data-recording]::before {
+  content: '';
+  display: inline-block;
+  width: .48em;
+  height: .48em;
+  margin-right: .4em;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: .1em;
+}

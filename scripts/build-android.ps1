@@ -17,7 +17,6 @@ $aapt = Join-Path $BuildTools 'aapt2.exe'
 $zipalign = Join-Path $BuildTools 'zipalign.exe'
 $java = Join-Path $JavaHome 'bin/java.exe'
 $signer = Join-Path $BuildTools 'lib/apksigner.jar'
-. (Join-Path $PSScriptRoot 'android-voice.ps1')
 
 Push-Location $repo
 try {
@@ -42,14 +41,11 @@ try {
         --min-sdk-version 26 --target-sdk-version 34 --version-code $versionCode --version-name $version `
         -o $unsigned $resources
 
-    $voice = Get-AndroidVoice $stage
-    $voskJar = Join-Path $voice.Vosk 'classes.jar'
-    $jnaJar = Join-Path $voice.Jna 'classes.jar'
     $sources = @(Get-ChildItem -LiteralPath 'android/src' -Recurse -Filter '*.java' -File | ForEach-Object FullName)
-    & (Join-Path $JavaHome 'bin/javac.exe') --release 11 -encoding UTF-8 -classpath "$AndroidJar;$voskJar;$jnaJar" -d $classesDirectory @sources
+    & (Join-Path $JavaHome 'bin/javac.exe') --release 11 -encoding UTF-8 -classpath $AndroidJar -d $classesDirectory @sources
     $classes = @(Get-ChildItem -LiteralPath $classesDirectory -Recurse -Filter '*.class' -File | ForEach-Object FullName)
     & $java -cp (Join-Path $BuildTools 'lib/d8.jar') com.android.tools.r8.D8 `
-        --min-api 26 --lib $AndroidJar --output $dexDirectory @classes $voskJar $jnaJar
+        --min-api 26 --lib $AndroidJar --output $dexDirectory @classes
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::Open((Resolve-Path -LiteralPath $unsigned).Path, [IO.Compression.ZipArchiveMode]::Update)
@@ -57,7 +53,6 @@ try {
         Get-ChildItem -LiteralPath $dexDirectory -Filter 'classes*.dex' -File | ForEach-Object {
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $_.Name) | Out-Null
         }
-        Add-AndroidVoice $archive $voice
         # AssetManager expects forward slashes even when the APK is built on Windows.
         $assets = (Resolve-Path -LiteralPath 'android/assets').Path
         Get-ChildItem -LiteralPath $assets -Recurse -File | ForEach-Object {
