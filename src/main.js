@@ -916,9 +916,11 @@ if (import.meta.env.MODE === 'android') {
       endPenTest(false);
       const result = JSON.parse(detail.value);
       bindButton.hidden = !result.canBind;
-      penStatus.textContent = result.direct ? '检测到华为笔身双击。关闭设置后可直接双击打开工具盘。'
-        : result.canBind ? '检测到随双击提示出现的信号。绑定后可关闭设置试用。'
-          : '未找到可独立绑定的双击信号。可确认平板已开启双击切换，再尝试一次。';
+      if (result.direct) penStatus.textContent = '检测到华为笔身双击。关闭设置后可直接双击打开工具盘。';
+      else if (result.canBind) penStatus.textContent = '检测到可独立绑定的双击信号。绑定后关闭设置试用。';
+      else if (result.sharedSignal) {
+        penStatus.textContent = '对照和双击收到相同按键。可将平板手写笔设置中的轻捏动作改为「不启用」，再做一次完整校准。';
+      } else penStatus.textContent = '未找到可独立绑定的双击信号。可确认平板已开启双击切换，再尝试一次。';
       penResult.textContent = result.log;
       penResult.hidden = false;
     }

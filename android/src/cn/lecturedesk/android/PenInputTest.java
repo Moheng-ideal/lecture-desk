@@ -17,12 +17,15 @@ final class PenInputTest {
     private static final int LAST_PHASE = 4;
     private static final int CONTROL_PHASES = 0b11;
     private static final int MAX_EVENTS = 48;
+    private static final int HUAWEI_PEN_KEY = 718;
+    private static final int HUAWEI_PEN_SCAN = 190;
     private static final String BINDING_KEY = "penDoubleTap";
     private static final long MIN_REPEAT_MS = 220;
     private static final long RECENT_PEN_MS = 15000;
     private final MainActivity activity;
     private final Handler clock = new Handler(Looper.getMainLooper());
     private final LinkedHashSet<String> events = new LinkedHashSet<>();
+    private final Map<String, KeyLog> keyEvents = new LinkedHashMap<>();
     private final Map<String, KeySample> keys = new LinkedHashMap<>();
     private int phase = -1;
     private int doubleTapPhases;
@@ -33,6 +36,21 @@ final class PenInputTest {
     private String previousSqueeze;
     private SharedPreferences preferences;
     private final Runnable advance = this::advancePhase;
+
+    private static final class KeyLog {
+        int count;
+        long lastTime;
+        final StringBuilder intervals = new StringBuilder();
+
+        void observe(long time) {
+            if (count > 0 && count <= 6) {
+                if (count > 1) intervals.append(", ");
+                intervals.append(time - lastTime);
+            }
+            lastTime = time;
+            count++;
+        }
+    }
 
     private static final class KeySample {
         int downPhases;
@@ -63,7 +81,9 @@ final class PenInputTest {
 
     private static boolean learnableKey(KeyEvent event) {
         int code = event.getKeyCode();
-        boolean stylusKey = code == KeyEvent.KEYCODE_UNKNOWN || code == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY
+        boolean huaweiPen = code == HUAWEI_PEN_KEY && event.getScanCode() == HUAWEI_PEN_SCAN
+            && event.getSource() == InputDevice.SOURCE_KEYBOARD;
+        boolean stylusKey = huaweiPen || code == KeyEvent.KEYCODE_UNKNOWN || code == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY
             || code == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY || code == KeyEvent.KEYCODE_STYLUS_BUTTON_TERTIARY;
         return stylusKey && (event.getAction() == KeyEvent.ACTION_UP || event.getAction() == KeyEvent.ACTION_DOWN)
             && event.getRepeatCount() == 0 && !event.isCanceled();
@@ -117,6 +137,7 @@ final class PenInputTest {
     void stop() {
         clock.removeCallbacks(advance);
         events.clear();
+        keyEvents.clear();
         keys.clear();
         candidate = null;
         phase = -1;
@@ -140,14 +161,26 @@ final class PenInputTest {
 
     private void finishRecording() {
         StringBuilder report = new StringBuilder();
-        if (events.isEmpty()) report.append("测试期间没有收到按键、触控或窗口焦点事件。");
-        else report.append(String.join("\n", events));
+        if (events.isEmpty() && keyEvents.isEmpty()) report.append("测试期间没有收到按键、触控或窗口焦点事件。");
+        for (Map.Entry<String, KeyLog> entry : keyEvents.entrySet()) {
+            KeyLog log = entry.getValue();
+            report.append(entry.getKey()).append(" ×").append(log.count);
+            if (log.intervals.length() > 0) report.append("，间隔 ").append(log.intervals).append(" ms");
+            if (log.count > 7) report.append("…");
+            report.append('\n');
+        }
+        if (!events.isEmpty()) report.append(String.join("\n", events));
         String match = null;
         int distinctKeys = 0;
         boolean direct = followsPrompts(doubleTapPhases);
+        boolean sharedSignal = overlapsSqueeze;
         for (Map.Entry<String, KeySample> entry : keys.entrySet()) {
             KeySample key = entry.getValue();
-            if (((key.downPhases | key.upPhases) & CONTROL_PHASES) != 0) continue;
+            int phases = key.downPhases | key.upPhases;
+            if ((phases & CONTROL_PHASES) != 0) {
+                sharedSignal |= (phases & ~CONTROL_PHASES) != 0;
+                continue;
+            }
             if (followsPrompts(key.upPhases)) match = "up:" + entry.getKey();
             else if (followsPrompts(key.downPhases)) match = "down:" + entry.getKey();
             else continue;
@@ -159,14 +192,16 @@ final class PenInputTest {
         stop();
         if (!direct && distinctKeys == 1) candidate = match;
         String payload = "{\"log\":" + JSONObject.quote(report.toString())
-            + ",\"direct\":" + direct + ",\"canBind\":" + (candidate != null) + "}";
+            + ",\"direct\":" + direct + ",\"sharedSignal\":" + sharedSignal + ",\"canBind\":" + (candidate != null) + "}";
         activity.emit("", "pen-test-result", payload);
     }
 
+    private String phaseLabel() {
+        return phase == 0 ? "悬停" : phase == 1 ? "轻捏对照" : "双击 " + (phase - 1);
+    }
+
     private void add(String line) {
-        if (events.size() >= MAX_EVENTS) return;
-        String step = phase == 0 ? "悬停" : phase == 1 ? "轻捏对照" : "双击 " + (phase - 1);
-        events.add(step + " | " + line);
+        if (events.size() < MAX_EVENTS) events.add(phaseLabel() + " | " + line);
     }
 
     boolean doubleTapBroadcast() {
@@ -180,9 +215,12 @@ final class PenInputTest {
         if (phase < 0 || event.getRepeatCount() != 0) return;
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         String action = down ? "DOWN" : event.getAction() == KeyEvent.ACTION_UP ? "UP" : "MULTIPLE";
-        add("KEY " + action + " " + KeyEvent.keyCodeToString(event.getKeyCode())
+        String label = phaseLabel() + " | KEY " + action + " " + KeyEvent.keyCodeToString(event.getKeyCode())
             + " source=0x" + Integer.toHexString(event.getSource()) + " scan=" + event.getScanCode()
-            + " device=" + event.getDeviceId());
+            + " device=" + event.getDeviceId();
+        if (keyEvents.size() < MAX_EVENTS || keyEvents.containsKey(label)) {
+            keyEvents.computeIfAbsent(label, ignored -> new KeyLog()).observe(event.getEventTime());
+        }
         if (!learnableKey(event)) return;
         if (phase >= 2 && !nearPen(event, lastPenEvent)) {
             needsHover = true;
