@@ -95,22 +95,12 @@ export function installBoardWindow(board, stopInkInput) {
     });
   }
 
-  function finish(event) {
+  function finish() {
     if (!drag) return;
-    const { id, handle, x, y, edge } = drag;
+    const { id, handle } = drag;
     drag = null;
     if (frame) cancelAnimationFrame(frame);
     frame = null;
-    if (pending && event && !edge) {
-      const view = viewportBounds();
-      const dx = event.clientX - x;
-      const dy = event.clientY - y;
-      // A finger cannot travel beyond the glass. Release at the outer edge to move the whole window past it.
-      if (dx < -40 && event.clientX <= view.left) pending.x = view.left - margin - pending.width;
-      if (dx > 40 && event.clientX >= view.right) pending.x = view.right + margin;
-      if (dy < -40 && event.clientY <= view.top) pending.y = view.top - margin - pending.height;
-      if (dy > 40 && event.clientY >= view.bottom) pending.y = view.bottom + margin;
-    }
     if (pending) paint(pending);
     pending = null;
     board.removeAttribute('data-moving-window');
@@ -125,7 +115,7 @@ export function installBoardWindow(board, stopInkInput) {
     handle.onpointerup = (event) => {
       if (drag?.id !== event.pointerId) return;
       onMove(event);
-      finish(event);
+      finish();
     };
     handle.onpointercancel = handle.onlostpointercapture = (event) => {
       if (drag?.id === event.pointerId) finish();

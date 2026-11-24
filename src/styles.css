@@ -493,3 +493,40 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
   text-align: center;
 }
 .composer[data-voice-cancel] #voice-status { background: var(--peach); font-weight: 650; }
+
+#board-open, #pen-shortcuts-open { position: relative; z-index: 13; }
+.pen-shortcuts {
+  position: fixed;
+  z-index: 16;
+  pointer-events: none;
+}
+#pen-shortcuts-title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px;
+  border-radius: 18px;
+  background: var(--green);
+  color: var(--paper);
+  font-size: .82rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.pen-shortcuts-actions button {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 60px;
+  min-height: 43px;
+  padding: 0 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  font-size: .78rem;
+  box-shadow: 0 5px 13px #231b1830;
+  pointer-events: auto;
+}
+.pen-shortcuts-actions button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--green); }
+.pen-shortcuts[data-compact] #pen-shortcuts-title { position: static; display: table; transform: none; margin: 0 auto 5px; }
+.pen-shortcuts[data-compact] .pen-shortcuts-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.pen-shortcuts[data-compact] .pen-shortcuts-actions button { position: static; width: auto; transform: none; }

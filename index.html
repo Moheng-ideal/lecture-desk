@@ -18,6 +18,7 @@
       <button type="button" data-panel="chat" aria-pressed="false">问答</button>
     </nav>
     <div class="header-actions">
+      <button type="button" id="pen-shortcuts-open" class="quiet" aria-label="笔快捷工具" aria-controls="pen-shortcuts" aria-expanded="false">笔工具</button>
       <button type="button" id="board-open" class="outline" aria-controls="class-board" aria-expanded="false">白板</button>
       <button type="button" id="settings-open" class="quiet"><span aria-hidden="true">⚙</span> 设置</button>
       <button type="button" id="records-open" class="accent">问答录 <span id="record-count">0</span></button>
@@ -200,6 +201,10 @@
       <button type="button" class="board-corner" data-board-resize="sw" aria-label="拖动左下角或按方向键调整窗口大小"></button>
       <button type="button" class="board-corner" data-board-resize="se" aria-label="拖动右下角或按方向键调整窗口大小"></button>
     </aside>
+  </div>
+  <div id="pen-shortcuts" class="pen-shortcuts" role="group" aria-labelledby="pen-shortcuts-title" hidden>
+    <span id="pen-shortcuts-title"></span>
+    <div class="pen-shortcuts-actions"></div>
   </div>
   <dialog id="pdf-save-dialog">
     <header><h2>保存批注 PDF</h2><button type="button" id="pdf-save-close" aria-label="关闭">×</button></header>

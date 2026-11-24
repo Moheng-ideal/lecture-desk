@@ -422,4 +422,5 @@ export function installWhiteboard({ notify }) {
     resize();
     refresh();
   });
+  return { setTool, stopInkInput };
 }

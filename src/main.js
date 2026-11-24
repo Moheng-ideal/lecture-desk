@@ -8,6 +8,7 @@ import { formatDate, groupRecords, sourceLabel } from './records.js';
 import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
 import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers } from './layout.js';
+import { installPenShortcuts } from './pen-shortcuts.js';
 import { installWhiteboard } from './whiteboard.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
@@ -791,7 +792,7 @@ for (const target of document.querySelectorAll('[data-close]')) target.onclick =
 $('pdf-open').onclick = () => $('pdf-file').click();
 $('book-fullscreen').onclick = () => setBookFullscreen(!$('workspace').hasAttribute('data-book-fullscreen'));
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+  if (event.defaultPrevented || event.key !== 'Escape' || document.querySelector('dialog[open]')) return;
   if (!$('class-board').hidden) $('board-close').click();
   else setBookFullscreen(false);
 });
@@ -890,7 +891,8 @@ installDividers();
 installScrollThumb($('reader'));
 installScrollThumb($('chat-scroll'));
 installTheme();
-installWhiteboard({ notify: feedback });
+const whiteboard = installWhiteboard({ notify: feedback });
+installPenShortcuts({ reader, whiteboard, showBook: () => showPanel('book') });
 if (nativeApp) $('export-docx').textContent = '保存 Word';
 async function initialize() {
   await credentialsReady;

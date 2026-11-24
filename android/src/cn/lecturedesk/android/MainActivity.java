@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Base64;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -34,6 +35,7 @@ public final class MainActivity extends Activity {
     private volatile boolean destroyed;
     private volatile float contactPressure = -1;
     private volatile long contactTime;
+    private long lastPenShortcut = -500;
     private WebView view;
     private DeskNetwork network;
     private DeskSpeech speech;
@@ -77,6 +79,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        if (handlePenButton(event)) return true;
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             int index = event.getActionIndex();
@@ -86,6 +89,36 @@ public final class MainActivity extends Activity {
             contactTime = SystemClock.uptimeMillis();
         }
         return super.dispatchTouchEvent(event);
+    }
+
+    @Override public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        return handlePenButton(event) || super.dispatchGenericMotionEvent(event);
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        int key = event.getKeyCode();
+        if (key == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY || key == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) openPenShortcuts();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private boolean handlePenButton(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action != MotionEvent.ACTION_BUTTON_PRESS && action != MotionEvent.ACTION_BUTTON_RELEASE) return false;
+        int button = event.getActionButton();
+        if (button != MotionEvent.BUTTON_STYLUS_PRIMARY && button != MotionEvent.BUTTON_STYLUS_SECONDARY) return false;
+        if (action == MotionEvent.ACTION_BUTTON_PRESS) openPenShortcuts();
+        return true;
+    }
+
+    private void openPenShortcuts() {
+        long now = SystemClock.uptimeMillis();
+        // Some devices report both a key event and a motion event for one press.
+        if (now - lastPenShortcut < 180) return;
+        lastPenShortcut = now;
+        emit("", "pen-shortcut", "");
     }
 
     void emit(String id, String kind, String value) {
@@ -142,7 +175,8 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         view.evaluateJavascript("(function(){const dialog=document.querySelector('dialog[open]');" +
-            "if(dialog){dialog.close();return true;}const board=document.querySelector('#class-board:not([hidden])');" +
+            "if(dialog){dialog.close();return true;}const palette=document.querySelector('#pen-shortcuts:not([hidden])');" +
+            "if(palette){document.getElementById('pen-shortcuts-open').click();return true;}const board=document.querySelector('#class-board:not([hidden])');" +
             "if(board){document.getElementById('board-close').click();return true;}const full=document.querySelector('#book-fullscreen[aria-pressed=true]');" +
             "if(full){full.click();return true;}return false;})()", handled -> {
                 if (!"true".equals(handled)) moveTaskToBack(true);
