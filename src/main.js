@@ -905,15 +905,19 @@ if (import.meta.env.MODE === 'android') {
       penStatus.textContent = detail.value;
     }
     if (!penTest) return;
-    if (detail?.kind === 'pen-test-ready') {
-      penStatus.textContent = '请把笔尖悬停在屏幕附近，间隔半秒轻捏三次。';
+    if (detail?.kind === 'pen-test-step') {
+      const step = Number(detail.value);
+      penStatus.textContent = step === 0
+        ? '把笔尖悬停在屏幕附近，轻轻移动，先不要捏笔身。'
+        : `第 ${step} / 3 次。保持笔尖悬停，现在轻捏笔身一下。`;
     }
     if (detail?.kind === 'pen-test-result') {
       endPenTest(false);
       const result = JSON.parse(detail.value);
       bindButton.hidden = !result.canBind;
-      penStatus.textContent = result.canBind ? '检测到重复的轻捏候选事件，可以绑定后试用。'
-        : '未识别到稳定的轻捏事件。可再试一次，或把下面的结果截图发给我。';
+      penStatus.textContent = result.direct ? '检测到标准笔身按键。关闭设置后轻捏试用。'
+        : result.canBind ? '检测到随提示重复出现的轻捏信号。绑定后可关闭设置试用。'
+          : '未找到可绑定的轻捏信号。可以重试，或把下方的分段结果发给我。';
       penResult.textContent = result.log;
       penResult.hidden = false;
     }

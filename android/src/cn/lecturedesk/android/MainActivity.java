@@ -105,14 +105,15 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        penTest.key(event);
+        penTest.key(event, lastPenEvent);
         if (penTest.matches(event, lastPenEvent)) {
             openPenShortcuts();
             return true;
         }
         int key = event.getKeyCode();
-        if (key == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY || key == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) openPenShortcuts();
+        if (key == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY || key == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY
+            || key == KeyEvent.KEYCODE_STYLUS_BUTTON_TERTIARY) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && !event.isCanceled()) onPenButton();
             return true;
         }
         return super.dispatchKeyEvent(event);
@@ -130,7 +131,7 @@ public final class MainActivity extends Activity {
         int button = buttonAction ? event.getActionButton() & mask : 0;
         int state = event.getButtonState() & mask;
         if (button != 0) {
-            if (action == MotionEvent.ACTION_BUTTON_PRESS) openPenShortcuts();
+            if (action == MotionEvent.ACTION_BUTTON_PRESS) onPenButton();
             penButtonState = action == MotionEvent.ACTION_BUTTON_PRESS ? state | button : state & ~button;
             return true;
         }
@@ -138,9 +139,13 @@ public final class MainActivity extends Activity {
         boolean stylus = tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER;
         if (stylus) lastPenEvent = event.getEventTime();
         if (state == 0 && !stylus) return false;
-        if ((state & ~penButtonState) != 0) openPenShortcuts();
+        if ((state & ~penButtonState) != 0) onPenButton();
         penButtonState = action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_HOVER_EXIT ? 0 : state;
         return false;
+    }
+
+    private void onPenButton() {
+        if (!penTest.standardButton()) openPenShortcuts();
     }
 
     private void openPenShortcuts() {

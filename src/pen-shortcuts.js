@@ -106,7 +106,8 @@ export function installPenShortcuts({ reader, whiteboard, showBook }) {
       control.disabled = original.disabled;
       if (mode) control.setAttribute('aria-pressed', original.getAttribute('aria-pressed'));
       if (!compact) {
-        const angle = (index * 220 / (options.length - 1) - 160) * Math.PI / 180;
+        // The unused 140° arc is centered at 45°, toward the bottom right.
+        const angle = (115 + index * 220 / (options.length - 1)) * Math.PI / 180;
         const radius = (size - 62) / 2;
         control.style.left = size / 2 + radius * Math.cos(angle) + 'px';
         control.style.top = size / 2 + radius * Math.sin(angle) + 'px';
