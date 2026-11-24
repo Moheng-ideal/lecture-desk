@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
     private volatile float contactPressure = -1;
     private volatile long contactTime;
     private long lastPenShortcut = -500;
+    private int penButtonState;
     private WebView view;
     private DeskNetwork network;
     private DeskSpeech speech;
@@ -105,12 +106,21 @@ public final class MainActivity extends Activity {
     }
 
     private boolean handlePenButton(MotionEvent event) {
+        int mask = MotionEvent.BUTTON_STYLUS_PRIMARY | MotionEvent.BUTTON_STYLUS_SECONDARY;
         int action = event.getActionMasked();
-        if (action != MotionEvent.ACTION_BUTTON_PRESS && action != MotionEvent.ACTION_BUTTON_RELEASE) return false;
-        int button = event.getActionButton();
-        if (button != MotionEvent.BUTTON_STYLUS_PRIMARY && button != MotionEvent.BUTTON_STYLUS_SECONDARY) return false;
-        if (action == MotionEvent.ACTION_BUTTON_PRESS) openPenShortcuts();
-        return true;
+        boolean buttonAction = action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_BUTTON_RELEASE;
+        int button = buttonAction ? event.getActionButton() & mask : 0;
+        int state = event.getButtonState() & mask;
+        if (button != 0) {
+            if (action == MotionEvent.ACTION_BUTTON_PRESS) openPenShortcuts();
+            penButtonState = action == MotionEvent.ACTION_BUTTON_PRESS ? state | button : state & ~button;
+            return true;
+        }
+        int tool = event.getPointerCount() > 0 ? event.getToolType(0) : MotionEvent.TOOL_TYPE_UNKNOWN;
+        if (state == 0 && tool != MotionEvent.TOOL_TYPE_STYLUS && tool != MotionEvent.TOOL_TYPE_ERASER) return false;
+        if ((state & ~penButtonState) != 0) openPenShortcuts();
+        penButtonState = action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_HOVER_EXIT ? 0 : state;
+        return false;
     }
 
     private void openPenShortcuts() {
@@ -175,7 +185,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         view.evaluateJavascript("(function(){const dialog=document.querySelector('dialog[open]');" +
-            "if(dialog){dialog.close();return true;}const palette=document.querySelector('#pen-shortcuts:not([hidden])');" +
+            "if(dialog){dialog.close();return true;}const palette=document.querySelector('#pen-shortcuts:not([hidden]):not([inert])');" +
             "if(palette){document.getElementById('pen-shortcuts-open').click();return true;}const board=document.querySelector('#class-board:not([hidden])');" +
             "if(board){document.getElementById('board-close').click();return true;}const full=document.querySelector('#book-fullscreen[aria-pressed=true]');" +
             "if(full){full.click();return true;}return false;})()", handled -> {

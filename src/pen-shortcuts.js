@@ -27,16 +27,50 @@ export function installPenShortcuts({ reader, whiteboard, showBook }) {
   const boardCanvas = document.getElementById('board-ink');
   const bookArea = document.getElementById('reader');
   let lastContact;
+  let expanded = false;
+  let animation;
+  const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function transition(opening) {
+    const resting = { opacity: 1, transform: 'scale(1)' };
+    const folded = { opacity: 0, transform: 'scale(.52)' };
+    let from = opening ? folded : resting;
+    if (animation) {
+      const style = getComputedStyle(palette);
+      from = { opacity: style.opacity, transform: style.transform };
+      animation.cancel();
+      animation = null;
+    }
+    if (motion.matches || typeof palette.animate !== 'function') {
+      if (!opening) palette.hidden = true;
+      return;
+    }
+    const next = palette.animate([from, opening ? resting : folded], {
+      duration: opening ? 230 : 145,
+      easing: opening ? 'cubic-bezier(.2,.75,.28,1)' : 'cubic-bezier(.4,0,1,1)',
+      fill: 'forwards',
+    });
+    animation = next;
+    next.onfinish = () => {
+      if (animation !== next) return;
+      animation = null;
+      if (!expanded) palette.hidden = true;
+      next.cancel();
+    };
+  }
 
   function close(restoreFocus = false) {
-    palette.hidden = true;
+    if (!expanded) return;
+    expanded = false;
+    if (restoreFocus || palette.contains(document.activeElement)) shortcut.focus({ preventScroll: true });
+    palette.inert = true;
     shortcut.setAttribute('aria-expanded', 'false');
-    if (restoreFocus) shortcut.focus({ preventScroll: true });
+    transition(false);
   }
 
   function open(keyboard = false) {
     if (document.querySelector('dialog[open]')) return;
-    if (!palette.hidden) {
+    if (expanded) {
       close(keyboard);
       return;
     }
@@ -86,14 +120,21 @@ export function installPenShortcuts({ reader, whiteboard, showBook }) {
       return control;
     }));
 
+    expanded = true;
     palette.hidden = false;
+    palette.inert = false;
     shortcut.setAttribute('aria-expanded', 'true');
-    const bounds = palette.getBoundingClientRect();
+    const menuWidth = palette.offsetWidth;
+    const menuHeight = palette.offsetHeight;
     const anchor = lastContact && Boolean(lastContact.onBoard) === Boolean(onBoard) ? lastContact : null;
     const x = anchor?.x ?? (area.width ? area.left + area.width / 2 : left + width / 2);
     const y = anchor?.y ?? (area.height ? area.top + area.height / 3 : top + height / 3);
-    palette.style.left = Math.max(left + 8, Math.min(x - bounds.width / 2, left + width - bounds.width - 8)) + 'px';
-    palette.style.top = Math.max(top + 8, Math.min(y - bounds.height / 2, top + height - bounds.height - 8)) + 'px';
+    const menuX = Math.max(left + 8, Math.min(x - menuWidth / 2, left + width - menuWidth - 8));
+    const menuY = Math.max(top + 8, Math.min(y - menuHeight / 2, top + height - menuHeight - 8));
+    palette.style.left = menuX + 'px';
+    palette.style.top = menuY + 'px';
+    palette.style.transformOrigin = (x - menuX) + 'px ' + (y - menuY) + 'px';
+    transition(true);
     if (keyboard) actions.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
   }
 
@@ -107,7 +148,7 @@ export function installPenShortcuts({ reader, whiteboard, showBook }) {
     if (palette.contains(target) || shortcut.contains(target)) return;
     const onBoard = boardCanvas.contains(target);
     const onBook = bookArea.contains(target);
-    if (!palette.hidden) {
+    if (expanded) {
       close();
       if (onBoard || onBook) {
         // Dismissing the tool palette should not add a dot or start a selection underneath it.
@@ -122,7 +163,7 @@ export function installPenShortcuts({ reader, whiteboard, showBook }) {
   }, true);
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !palette.hidden) {
+    if (event.key === 'Escape' && expanded) {
       event.preventDefault();
       close(palette.contains(document.activeElement));
     }
