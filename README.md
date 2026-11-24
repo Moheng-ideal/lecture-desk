@@ -8,7 +8,7 @@
 
 ## 下载安装
 
-**讲课台 v0.8.3（Android APK）** · [服务器下载](http://8.141.106.190/lecture-desk/lecture-desk-android-0.8.3.apk) · [GitHub 下载](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.8.3-android/lecture-desk-android-0.8.3.apk) · [更新日志](CHANGELOG.md)
+**讲课台 v0.8.4（笔身双击测试版 APK）** · [服务器下载](http://8.141.106.190/lecture-desk/lecture-desk-android-0.8.4.apk) · [GitHub 下载](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.8.4-android/lecture-desk-android-0.8.4.apk) · [更新日志](CHANGELOG.md)
 
 - Android 平板下载 APK 后，打开文件并按系统提示安装。
 - HarmonyOS 5.0 及以上的华为平板，可在支持的机型上通过「卓易通」打开 APK 并尝试安装，兼容性以设备实测为准。开发者也可以参考[鸿蒙工程及真机签名说明](harmony/README.md)。
@@ -17,7 +17,7 @@
 
 - **课件阅读与批注**。可批量导入 PDF、Word 和 PPT，通过标签页切换课件。支持连续滚动、双指缩放、触控笔批注和框选截图。可以双击标签页改名，或让 AI 读图建议名称。带批注的课件可导出为 PDF 或上传飞书云盘。
 - **白板**。点顶部「白板」打开浮动小窗，默认在讲解区打开。拖动标题栏移动小窗，松手即停。点顶部「白板」可随时复位。拖左右下边或四角可调整大小。小窗外的课本与讲解区仍可操作。白板画布支持平移、缩放、压感笔刷以及点擦、整笔擦和圈选擦除。
-- **笔快捷工具**。点顶部「笔工具」，可在最近用笔接触的区域选择现有工具。Android 版也可通过系统转发的手写笔侧键打开工具盘。
+- **笔快捷工具**。点顶部「笔工具」，可在最近用笔接触的区域选择现有工具。v0.8.4 支持华为笔身双击信号，也可在 Android 版的「设置 → 双击笔身虚拟键」测试和校准。卓易通的双击转发和笔身短振以真机表现为准。
 - **DeepSeek 讲解师**。可直接分析课件截图或讲解当前页，每次提问最多带 8 张截图。内置公式排版和教学示意图，公式随回答生成显示。可设置自定义提示词和用户画像。Android 版支持按住录音，松手后由 DeepSeek 转写并提问。
 - **问答录**。问题、课件截图、历史文字引用和 AI 回答可按课本折叠查看，支持整本或逐条选择，导出为 Word 或保存为可编辑的飞书云文档。
 
