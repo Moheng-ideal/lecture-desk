@@ -14,43 +14,23 @@ import org.json.JSONObject;
 
 final class PenInputTest {
     private static final int PHASE_MS = 3000;
-    private static final int LAST_PHASE = 4;
-    private static final int CONTROL_PHASES = 0b11;
+    private static final int SQUEEZE_PHASES = 3;
+    private static final int CONTROL = 1;
     private static final int MAX_EVENTS = 48;
-    private static final int HUAWEI_PEN_KEY = 718;
-    private static final int HUAWEI_PEN_SCAN = 190;
-    private static final String BINDING_KEY = "penDoubleTap";
+    private static final String BINDING_KEY = "penSqueeze";
     private static final long MIN_REPEAT_MS = 220;
     private static final long RECENT_PEN_MS = 15000;
     private final MainActivity activity;
     private final Handler clock = new Handler(Looper.getMainLooper());
     private final LinkedHashSet<String> events = new LinkedHashSet<>();
-    private final Map<String, KeyLog> keyEvents = new LinkedHashMap<>();
     private final Map<String, KeySample> keys = new LinkedHashMap<>();
     private int phase = -1;
-    private int doubleTapPhases;
+    private int standardButtonPhases;
     private boolean needsHover;
-    private boolean overlapsSqueeze;
     private String candidate;
     private String mapping;
-    private String previousSqueeze;
     private SharedPreferences preferences;
     private final Runnable advance = this::advancePhase;
-
-    private static final class KeyLog {
-        int count;
-        long lastTime;
-        final StringBuilder intervals = new StringBuilder();
-
-        void observe(long time) {
-            if (count > 0 && count <= 6) {
-                if (count > 1) intervals.append(", ");
-                intervals.append(time - lastTime);
-            }
-            lastTime = time;
-            count++;
-        }
-    }
 
     private static final class KeySample {
         int downPhases;
@@ -74,18 +54,12 @@ final class PenInputTest {
     void load() {
         preferences = activity.getSharedPreferences("penShortcuts", Context.MODE_PRIVATE);
         mapping = preferences.getString(BINDING_KEY, null);
-        previousSqueeze = preferences.getString("penSqueeze", "");
-        if (previousSqueeze.startsWith("up:")) previousSqueeze = previousSqueeze.substring(3);
-        else if (previousSqueeze.startsWith("down:")) previousSqueeze = previousSqueeze.substring(5);
+        if (mapping != null && !mapping.startsWith("up:") && !mapping.startsWith("down:")) mapping = "up:" + mapping;
     }
 
-    private static boolean learnableKey(KeyEvent event) {
-        int code = event.getKeyCode();
-        boolean huaweiPen = code == HUAWEI_PEN_KEY && event.getScanCode() == HUAWEI_PEN_SCAN
-            && event.getSource() == InputDevice.SOURCE_KEYBOARD;
-        boolean stylusKey = huaweiPen || code == KeyEvent.KEYCODE_UNKNOWN || code == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY
-            || code == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY || code == KeyEvent.KEYCODE_STYLUS_BUTTON_TERTIARY;
-        return stylusKey && (event.getAction() == KeyEvent.ACTION_UP || event.getAction() == KeyEvent.ACTION_DOWN)
+    private static boolean unknownKey(KeyEvent event) {
+        return event.getKeyCode() == KeyEvent.KEYCODE_UNKNOWN
+            && (event.getAction() == KeyEvent.ACTION_UP || event.getAction() == KeyEvent.ACTION_DOWN)
             && event.getRepeatCount() == 0 && !event.isCanceled();
     }
 
@@ -107,8 +81,8 @@ final class PenInputTest {
     }
 
     boolean matches(KeyEvent event, long lastPenEvent) {
-        return phase < 0 && mapping != null && learnableKey(event) && nearPen(event, lastPenEvent)
-            && mapping.equals(actionPrefix(event) + event.getKeyCode() + "/" + fingerprint(event));
+        return phase < 0 && mapping != null && unknownKey(event) && nearPen(event, lastPenEvent)
+            && mapping.equals(actionPrefix(event) + fingerprint(event));
     }
 
     void bind() {
@@ -119,14 +93,14 @@ final class PenInputTest {
         mapping = candidate;
         preferences.edit().putString(BINDING_KEY, mapping).apply();
         candidate = null;
-        activity.emit("", "pen-test-binding", "双击快捷键已保存。关闭设置后双击笔身虚拟键。");
+        activity.emit("", "pen-test-binding", "轻捏快捷键已保存。关闭设置后试一下。");
     }
 
     void clearBinding() {
         stop();
         mapping = null;
         preferences.edit().remove(BINDING_KEY).apply();
-        activity.emit("", "pen-test-binding", "已清除双击绑定。");
+        activity.emit("", "pen-test-binding", "已清除轻捏绑定。");
     }
 
     void start() {
@@ -137,77 +111,58 @@ final class PenInputTest {
     void stop() {
         clock.removeCallbacks(advance);
         events.clear();
-        keyEvents.clear();
         keys.clear();
         candidate = null;
         phase = -1;
-        doubleTapPhases = 0;
+        standardButtonPhases = 0;
         needsHover = false;
-        overlapsSqueeze = false;
     }
 
     private void advancePhase() {
-        if (++phase > LAST_PHASE) {
+        if (++phase > SQUEEZE_PHASES) {
             finishRecording();
             return;
         }
         activity.emit("", "pen-test-step", Integer.toString(phase));
-        clock.postDelayed(advance, phase == 1 ? 5000 : PHASE_MS);
+        clock.postDelayed(advance, PHASE_MS);
     }
 
     private static boolean followsPrompts(int phases) {
-        return (phases & CONTROL_PHASES) == 0 && Integer.bitCount(phases) >= 2;
+        return (phases & CONTROL) == 0 && Integer.bitCount(phases) >= 2;
     }
 
     private void finishRecording() {
         StringBuilder report = new StringBuilder();
-        if (events.isEmpty() && keyEvents.isEmpty()) report.append("测试期间没有收到按键、触控或窗口焦点事件。");
-        for (Map.Entry<String, KeyLog> entry : keyEvents.entrySet()) {
-            KeyLog log = entry.getValue();
-            report.append(entry.getKey()).append(" ×").append(log.count);
-            if (log.intervals.length() > 0) report.append("，间隔 ").append(log.intervals).append(" ms");
-            if (log.count > 7) report.append("…");
-            report.append('\n');
-        }
-        if (!events.isEmpty()) report.append(String.join("\n", events));
+        if (events.isEmpty()) report.append("测试期间没有收到按键、触控或窗口焦点事件。");
+        else report.append(String.join("\n", events));
         String match = null;
         int distinctKeys = 0;
-        boolean direct = followsPrompts(doubleTapPhases);
-        boolean sharedSignal = overlapsSqueeze;
+        boolean direct = followsPrompts(standardButtonPhases);
         for (Map.Entry<String, KeySample> entry : keys.entrySet()) {
             KeySample key = entry.getValue();
-            int phases = key.downPhases | key.upPhases;
-            if ((phases & CONTROL_PHASES) != 0) {
-                sharedSignal |= (phases & ~CONTROL_PHASES) != 0;
-                continue;
-            }
+            if (((key.downPhases | key.upPhases) & CONTROL) != 0) continue;
             if (followsPrompts(key.upPhases)) match = "up:" + entry.getKey();
             else if (followsPrompts(key.downPhases)) match = "down:" + entry.getKey();
             else continue;
             distinctKeys++;
         }
         if (needsHover) report.append("\n有零扫描码按键缺少同期触控笔悬停信号。");
-        if (overlapsSqueeze) report.append("\n双击阶段有按键与上次保存的轻捏信号相同。");
-        if (distinctKeys > 1) report.append("\n发现多个与双击提示同步的按键信号。");
+        if (distinctKeys > 1) report.append("\n发现多个与提示同步的未知按键。");
         stop();
         if (!direct && distinctKeys == 1) candidate = match;
         String payload = "{\"log\":" + JSONObject.quote(report.toString())
-            + ",\"direct\":" + direct + ",\"sharedSignal\":" + sharedSignal + ",\"canBind\":" + (candidate != null) + "}";
+            + ",\"direct\":" + direct + ",\"canBind\":" + (candidate != null) + "}";
         activity.emit("", "pen-test-result", payload);
     }
 
-    private String phaseLabel() {
-        return phase == 0 ? "悬停" : phase == 1 ? "轻捏对照" : "双击 " + (phase - 1);
-    }
-
     private void add(String line) {
-        if (events.size() < MAX_EVENTS) events.add(phaseLabel() + " | " + line);
+        if (events.size() < MAX_EVENTS) events.add((phase == 0 ? "悬停" : "轻捏 " + phase) + " | " + line);
     }
 
-    boolean doubleTapBroadcast() {
+    boolean standardButton() {
         if (phase < 0) return false;
-        doubleTapPhases |= 1 << phase;
-        add("收到华为笔身双击广播");
+        standardButtonPhases |= 1 << phase;
+        add("检测到标准笔身按键");
         return true;
     }
 
@@ -215,24 +170,15 @@ final class PenInputTest {
         if (phase < 0 || event.getRepeatCount() != 0) return;
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         String action = down ? "DOWN" : event.getAction() == KeyEvent.ACTION_UP ? "UP" : "MULTIPLE";
-        String label = phaseLabel() + " | KEY " + action + " " + KeyEvent.keyCodeToString(event.getKeyCode())
+        add("KEY " + action + " " + KeyEvent.keyCodeToString(event.getKeyCode())
             + " source=0x" + Integer.toHexString(event.getSource()) + " scan=" + event.getScanCode()
-            + " device=" + event.getDeviceId();
-        if (keyEvents.size() < MAX_EVENTS || keyEvents.containsKey(label)) {
-            keyEvents.computeIfAbsent(label, ignored -> new KeyLog()).observe(event.getEventTime());
-        }
-        if (!learnableKey(event)) return;
-        if (phase >= 2 && !nearPen(event, lastPenEvent)) {
+            + " device=" + event.getDeviceId());
+        if (!unknownKey(event)) return;
+        if (phase > 0 && !nearPen(event, lastPenEvent)) {
             needsHover = true;
             return;
         }
-        String fingerprint = fingerprint(event);
-        int code = event.getKeyCode();
-        if (code == KeyEvent.KEYCODE_UNKNOWN && fingerprint.equals(previousSqueeze)) {
-            overlapsSqueeze |= phase >= 2;
-            return;
-        }
-        String key = code + "/" + fingerprint;
+        String key = fingerprint(event);
         if (keys.size() < MAX_EVENTS || keys.containsKey(key)) {
             keys.computeIfAbsent(key, ignored -> new KeySample()).observe(down, phase, event.getEventTime());
         }

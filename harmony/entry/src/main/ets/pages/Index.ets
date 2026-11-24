@@ -42,11 +42,11 @@ struct Index {
     try {
       const pen = await import('./DeskPen');
       if (generation !== this.penGeneration) return;
-      this.stopPen = pen.subscribePenDoubleTap((): void => {
+      this.stopPen = pen.subscribePenSqueeze((): void => {
         if (generation === this.penGeneration && this.webReady) this.native.openPenShortcuts();
       });
     } catch {
-      hilog.warn(0x2900, 'LectureDesk', 'Unable to subscribe to Pen Kit double-tap events');
+      hilog.warn(0x2900, 'LectureDesk', 'Unable to subscribe to Pen Kit squeeze events');
     }
   }
 
