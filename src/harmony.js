@@ -26,7 +26,12 @@ function bridge() {
 export async function androidPenTest() {
   const native = await bridge();
   if (typeof native.startPenInputTest !== 'function') throw new Error('请安装支持轻捏测试的 APK。');
-  return { start: () => native.startPenInputTest(), stop: () => native.stopPenInputTest() };
+  return {
+    start: () => native.startPenInputTest(),
+    stop: () => native.stopPenInputTest(),
+    bind: () => native.bindLearnedSqueeze(),
+    clear: () => native.clearLearnedSqueeze(),
+  };
 }
 
 export async function checkAndroidUpdate() {

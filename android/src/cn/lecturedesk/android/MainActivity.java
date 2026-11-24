@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     private volatile long contactTime;
     private long lastPenShortcut = -500;
     private int penButtonState;
+    private long lastPenEvent = -1;
     private WebView view;
     private DeskNetwork network;
     private DeskSpeech speech;
@@ -56,6 +57,7 @@ public final class MainActivity extends Activity {
         network = new DeskNetwork(this);
         speech = new DeskSpeech(this);
         updater = new DeskUpdater(this);
+        penTest.load();
         view = new WebView(this);
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -101,6 +103,10 @@ public final class MainActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         penTest.key(event);
+        if (penTest.matches(event, lastPenEvent)) {
+            openPenShortcuts();
+            return true;
+        }
         int key = event.getKeyCode();
         if (key == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY || key == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) openPenShortcuts();
@@ -126,7 +132,9 @@ public final class MainActivity extends Activity {
             return true;
         }
         int tool = event.getPointerCount() > 0 ? event.getToolType(0) : MotionEvent.TOOL_TYPE_UNKNOWN;
-        if (state == 0 && tool != MotionEvent.TOOL_TYPE_STYLUS && tool != MotionEvent.TOOL_TYPE_ERASER) return false;
+        boolean stylus = tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER;
+        if (stylus) lastPenEvent = event.getEventTime();
+        if (state == 0 && !stylus) return false;
         if ((state & ~penButtonState) != 0) openPenShortcuts();
         penButtonState = action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_HOVER_EXIT ? 0 : state;
         return false;
@@ -230,6 +238,14 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface public void stopPenInputTest() {
             runOnUiThread(() -> penTest.stop());
+        }
+
+        @JavascriptInterface public void bindLearnedSqueeze() {
+            runOnUiThread(() -> { if (!destroyed) penTest.bind(); });
+        }
+
+        @JavascriptInterface public void clearLearnedSqueeze() {
+            runOnUiThread(() -> { if (!destroyed) penTest.clearBinding(); });
         }
 
         @JavascriptInterface public void checkForUpdate() {

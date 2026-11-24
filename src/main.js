@@ -816,20 +816,22 @@ if (import.meta.env.MODE === 'android') {
   $('check-update').hidden = false;
   $('pen-input-test').hidden = false;
   const penButton = $('pen-test-start');
+  const bindButton = $('pen-test-bind');
   const penStatus = $('pen-test-status');
   const penResult = $('pen-test-result');
   let penTest;
   let penTimer;
   let penGeneration = 0;
-  const endPenTest = () => {
+  const endPenTest = (cancelled = true) => {
     penGeneration++;
     clearTimeout(penTimer);
-    penTest?.stop();
+    if (cancelled) penTest?.stop();
     penTest = undefined;
     penButton.disabled = false;
+    bindButton.hidden = true;
     penStatus.textContent = '';
   };
-  $('settings').addEventListener('close', endPenTest);
+  $('settings').addEventListener('close', () => endPenTest());
   $('pen-input-test').addEventListener('toggle', () => {
     if (!$('pen-input-test').open) endPenTest();
   });
@@ -837,6 +839,7 @@ if (import.meta.env.MODE === 'android') {
     const generation = ++penGeneration;
     penButton.disabled = true;
     penResult.hidden = true;
+    bindButton.hidden = true;
     penStatus.textContent = '准备开始…';
     try {
       const { androidPenTest } = await import('./harmony.js');
@@ -855,17 +858,42 @@ if (import.meta.env.MODE === 'android') {
     }
   };
   window.addEventListener('lecture-desk-native', (event) => {
-    if (!penTest) return;
-    if (event.detail?.kind === 'pen-test-ready') {
-      penStatus.textContent = '请轻捏笔身两到三次，让笔尖悬空，屏幕保持在此页。';
+    const detail = event.detail;
+    if (detail?.kind === 'pen-test-binding' && $('settings').open && $('pen-input-test').open) {
+      bindButton.hidden = true;
+      penStatus.textContent = detail.value;
     }
-    if (event.detail?.kind === 'pen-test-result') {
-      endPenTest();
-      penStatus.textContent = '测试结束。请把下面的结果截图发过来。';
-      penResult.textContent = event.detail.value;
+    if (!penTest) return;
+    if (detail?.kind === 'pen-test-ready') {
+      penStatus.textContent = '请把笔尖悬停在屏幕附近，间隔半秒轻捏三次。';
+    }
+    if (detail?.kind === 'pen-test-result') {
+      endPenTest(false);
+      const result = JSON.parse(detail.value);
+      bindButton.hidden = !result.canBind;
+      penStatus.textContent = result.canBind ? '检测到重复的轻捏候选事件，可以绑定后试用。'
+        : '未识别到稳定的轻捏事件。可再试一次，或把下面的结果截图发给我。';
+      penResult.textContent = result.log;
       penResult.hidden = false;
     }
   });
+  bindButton.onclick = async () => {
+    bindButton.hidden = true;
+    try {
+      const { androidPenTest } = await import('./harmony.js');
+      const test = await androidPenTest();
+      if ($('settings').open && $('pen-input-test').open) test.bind();
+    } catch (error) { penStatus.textContent = error.message; }
+  };
+  $('pen-test-clear').onclick = async () => {
+    endPenTest();
+    penResult.hidden = true;
+    try {
+      const { androidPenTest } = await import('./harmony.js');
+      const test = await androidPenTest();
+      if ($('settings').open && $('pen-input-test').open) test.clear();
+    } catch (error) { penStatus.textContent = error.message; }
+  };
   $('check-update').onclick = async () => {
     try {
       const { checkAndroidUpdate } = await import('./harmony.js');
