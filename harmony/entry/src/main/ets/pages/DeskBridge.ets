@@ -65,6 +65,10 @@ export class DeskBridge {
     return Date.now() - this.penDownAt <= 180 ? this.penForce : -1;
   }
 
+  openPenShortcuts(): void {
+    this.send('', 'pen-shortcut');
+  }
+
   private send(id: string, kind: string, value: string = ''): void {
     const message = JSON.stringify(new BridgeEvent(id, kind, value));
     try {

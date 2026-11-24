@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "cn.lecturedesk.chalkboard",
     "vendor": "LectureDesk",
-    "versionCode": 404,
-    "versionName": "0.4.4",
+    "versionCode": 707,
+    "versionName": "0.7.7",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }
