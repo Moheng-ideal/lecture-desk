@@ -1,9 +1,9 @@
 import { stylusInteraction } from '@kit.Penkit';
 
-export function subscribePenSqueeze(openTools: () => void): () => void {
-  const receiver = (_: stylusInteraction.SqueezeEvent): void => {
+export function subscribePenDoubleTap(openTools: () => void): () => void {
+  const receiver = (_: stylusInteraction.DoubleTapEvent): void => {
     openTools();
   };
-  stylusInteraction.on('squeeze', receiver);
-  return (): void => stylusInteraction.off('squeeze', receiver);
+  stylusInteraction.on('doubleTap', receiver);
+  return (): void => stylusInteraction.off('doubleTap', receiver);
 }

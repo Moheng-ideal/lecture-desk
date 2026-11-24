@@ -891,7 +891,7 @@ if (import.meta.env.MODE === 'android') {
       penTimer = setTimeout(() => {
         endPenTest();
         penStatus.textContent = '测试超时，可以再试一次。';
-      }, 16000);
+      }, 22000);
     } catch (error) {
       if (generation !== penGeneration) return;
       endPenTest();
@@ -908,16 +908,17 @@ if (import.meta.env.MODE === 'android') {
     if (detail?.kind === 'pen-test-step') {
       const step = Number(detail.value);
       penStatus.textContent = step === 0
-        ? '把笔尖悬停在屏幕附近，轻轻移动，先不要捏笔身。'
-        : `第 ${step} / 3 次。保持笔尖悬停，现在轻捏笔身一下。`;
+        ? '把笔尖悬停在屏幕附近，先不要双击或轻捏笔身。'
+        : step === 1 ? '轻捏一下作对照。若系统工具环弹出，请收起它。'
+          : `第 ${step - 1} / 3 次。保持笔尖悬停，现在双击笔身虚拟键。`;
     }
     if (detail?.kind === 'pen-test-result') {
       endPenTest(false);
       const result = JSON.parse(detail.value);
       bindButton.hidden = !result.canBind;
-      penStatus.textContent = result.direct ? '检测到标准笔身按键。关闭设置后轻捏试用。'
-        : result.canBind ? '检测到随提示重复出现的轻捏信号。绑定后可关闭设置试用。'
-          : '未找到可绑定的轻捏信号。可以重试，或把下方的分段结果发给我。';
+      penStatus.textContent = result.direct ? '检测到华为笔身双击。关闭设置后可直接双击打开工具盘。'
+        : result.canBind ? '检测到随双击提示出现的信号。绑定后可关闭设置试用。'
+          : '未找到可独立绑定的双击信号。可确认平板已开启双击切换，再尝试一次。';
       penResult.textContent = result.log;
       penResult.hidden = false;
     }

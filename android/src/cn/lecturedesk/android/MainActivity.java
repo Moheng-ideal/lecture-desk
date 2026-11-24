@@ -2,14 +2,21 @@ package cn.lecturedesk.android;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.Base64;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.webkit.JavascriptInterface;
@@ -31,6 +38,7 @@ public final class MainActivity extends Activity {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     };
     private static final int SAVE_FILE = 488;
+    private static final String PEN_DOUBLE_TAP = "com.huawei.stylus.action.BUTTON_DOUBLE_PRESSED";
     private final ExecutorService disk = Executors.newSingleThreadExecutor();
     private ValueCallback<Uri[]> picker;
     private volatile SaveJob saveJob;
@@ -38,13 +46,20 @@ public final class MainActivity extends Activity {
     private volatile float contactPressure = -1;
     private volatile long contactTime;
     private long lastPenShortcut = -500;
-    private int penButtonState;
+    private boolean penReceiverRegistered;
     private long lastPenEvent = -1;
     private WebView view;
     private DeskNetwork network;
     private DeskSpeech speech;
     private DeskUpdater updater;
     private final PenInputTest penTest = new PenInputTest(this);
+    private final BroadcastReceiver penReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (PEN_DOUBLE_TAP.equals(intent.getAction()) && hasWindowFocus() && !penTest.doubleTapBroadcast()) {
+                openPenShortcuts(null);
+            }
+        }
+    };
 
     private static class SaveJob {
         final String id;
@@ -86,8 +101,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
-        penTest.motion("TOUCH", event);
-        if (handlePenButton(event)) return true;
+        observePen("TOUCH", event);
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             int index = event.getActionIndex();
@@ -100,20 +114,14 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchGenericMotionEvent(MotionEvent event) {
-        penTest.motion("MOTION", event);
-        return handlePenButton(event) || super.dispatchGenericMotionEvent(event);
+        observePen("MOTION", event);
+        return super.dispatchGenericMotionEvent(event);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         penTest.key(event, lastPenEvent);
         if (penTest.matches(event, lastPenEvent)) {
-            openPenShortcuts();
-            return true;
-        }
-        int key = event.getKeyCode();
-        if (key == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY || key == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY
-            || key == KeyEvent.KEYCODE_STYLUS_BUTTON_TERTIARY) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && !event.isCanceled()) onPenButton();
+            openPenShortcuts(event.getDevice());
             return true;
         }
         return super.dispatchKeyEvent(event);
@@ -122,38 +130,53 @@ public final class MainActivity extends Activity {
     @Override public void onWindowFocusChanged(boolean focused) {
         super.onWindowFocusChanged(focused);
         penTest.focus(focused);
+        if (focused && !destroyed) registerPenReceiver();
+        else unregisterPenReceiver();
     }
 
-    private boolean handlePenButton(MotionEvent event) {
-        int mask = MotionEvent.BUTTON_STYLUS_PRIMARY | MotionEvent.BUTTON_STYLUS_SECONDARY;
-        int action = event.getActionMasked();
-        boolean buttonAction = action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_BUTTON_RELEASE;
-        int button = buttonAction ? event.getActionButton() & mask : 0;
-        int state = event.getButtonState() & mask;
-        if (button != 0) {
-            if (action == MotionEvent.ACTION_BUTTON_PRESS) onPenButton();
-            penButtonState = action == MotionEvent.ACTION_BUTTON_PRESS ? state | button : state & ~button;
-            return true;
+    private void registerPenReceiver() {
+        if (penReceiverRegistered) return;
+        IntentFilter filter = new IntentFilter(PEN_DOUBLE_TAP);
+        try {
+            // The OEM broadcast comes from outside this app, so use a focus-scoped receiver.
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(penReceiver, filter, Context.RECEIVER_EXPORTED);
+            else registerReceiver(penReceiver, filter);
+            penReceiverRegistered = true;
+        } catch (SecurityException ignored) {
+            // A compatibility container may disallow the broadcast; calibrated key events still work.
         }
+    }
+
+    private void unregisterPenReceiver() {
+        if (!penReceiverRegistered) return;
+        penReceiverRegistered = false;
+        unregisterReceiver(penReceiver);
+    }
+
+    private void observePen(String channel, MotionEvent event) {
+        penTest.motion(channel, event);
         int tool = event.getPointerCount() > 0 ? event.getToolType(0) : MotionEvent.TOOL_TYPE_UNKNOWN;
-        boolean stylus = tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER;
-        if (stylus) lastPenEvent = event.getEventTime();
-        if (state == 0 && !stylus) return false;
-        if ((state & ~penButtonState) != 0) onPenButton();
-        penButtonState = action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_HOVER_EXIT ? 0 : state;
-        return false;
+        if (tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER) {
+            lastPenEvent = event.getEventTime();
+        }
     }
 
-    private void onPenButton() {
-        if (!penTest.standardButton()) openPenShortcuts();
-    }
-
-    private void openPenShortcuts() {
+    private void openPenShortcuts(InputDevice pen) {
+        if (destroyed || !hasWindowFocus()) return;
         long now = SystemClock.uptimeMillis();
-        // Some devices report both a key event and a motion event for one press.
+        // One pen gesture can arrive both as a broadcast and a key event.
         if (now - lastPenShortcut < 180) return;
         lastPenShortcut = now;
         emit("", "pen-shortcut", "");
+        if (pen == null || pen.isVirtual() || !pen.supportsSource(InputDevice.SOURCE_STYLUS)
+            || pen.supportsSource(InputDevice.SOURCE_TOUCHSCREEN)) return;
+        // Only address the pen's own motor, if Android exposes it as a physical input device.
+        try {
+            Vibrator motor = pen.getVibrator();
+            if (motor.hasVibrator()) motor.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE));
+        } catch (RuntimeException ignored) {
+            // The menu still opens with the pen's built-in feedback on supported hardware.
+        }
     }
 
     void emit(String id, String kind, String value) {
@@ -237,12 +260,14 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onStop() {
+        unregisterPenReceiver();
         speech.stopCapture();
         super.onStop();
     }
 
     @Override protected void onDestroy() {
         destroyed = true;
+        unregisterPenReceiver();
         selectedBooks(null);
         network.close();
         speech.close();
@@ -265,11 +290,11 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> penTest.stop());
         }
 
-        @JavascriptInterface public void bindLearnedSqueeze() {
+        @JavascriptInterface public void bindLearnedDoubleTap() {
             runOnUiThread(() -> { if (!destroyed) penTest.bind(); });
         }
 
-        @JavascriptInterface public void clearLearnedSqueeze() {
+        @JavascriptInterface public void clearLearnedDoubleTap() {
             runOnUiThread(() -> { if (!destroyed) penTest.clearBinding(); });
         }
 
