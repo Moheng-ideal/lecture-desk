@@ -25,7 +25,7 @@ function centerBetween(a, b) {
   };
 }
 
-export function installWhiteboard({ notify }) {
+export function installWhiteboard({ notify, allowFingerInk }) {
   const id = (name) => document.getElementById(name);
   const board = id('class-board');
   const open = id('board-open');
@@ -339,7 +339,7 @@ export function installWhiteboard({ notify }) {
     const finger = touch && !stylus;
     if (finger && action?.stylus) return;
     if (stylus && action?.finger) {
-      endAction(false);
+      endAction(true);
       contacts.clear();
     }
     const screen = pointOnCanvas(event, canvas.getBoundingClientRect());
@@ -355,7 +355,7 @@ export function installWhiteboard({ notify }) {
     }
     if (pinch || pinchTail || action) return;
     if (!canvas.hasPointerCapture(event.pointerId)) canvas.setPointerCapture(event.pointerId);
-    const tool = finger ? 'pan' : mode;
+    const tool = finger && !allowFingerInk() ? 'pan' : mode;
     action = { id: event.pointerId, tool, finger, stylus, previous: ink };
     if (tool === 'pan') action.anchor = worldAt(screen);
     else {

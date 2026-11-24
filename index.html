@@ -32,7 +32,7 @@
           <button type="button" id="pdf-export" class="quiet" disabled>保存 PDF</button>
           <button type="button" id="library-open" class="quiet">书架</button>
           <button type="button" id="pdf-open" class="outline"><b aria-hidden="true">＋</b> 导入课件</button>
-          <input id="pdf-file" type="file" accept=".pdf,.docx,.doc,.pptx,.ppt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" hidden>
+          <input id="pdf-file" type="file" multiple accept=".pdf,.docx,.doc,.pptx,.ppt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint" hidden>
         </div>
       </div>
       <div class="book-tabs-bar">
@@ -295,7 +295,7 @@
             <label>目标飞书文件夹链接<input id="feishu-folder" type="url" maxlength="400" placeholder="https://你的租户.feishu.cn/drive/folder/…"></label>
           </div>
         </details>
-        <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（关闭时，手指滑动，触控笔书写。双指缩放）</label>
+        <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（课本和白板，双指仍可缩放）</label>
       </div>
       <footer><button type="submit" class="accent">应用设置</button></footer>
     </form>

@@ -2,6 +2,7 @@ package cn.lecturedesk.android;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -17,6 +18,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import java.io.OutputStream;
+import java.util.LinkedHashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONObject;
@@ -71,9 +73,10 @@ public final class MainActivity extends Activity {
                 if (picker != null) picker.onReceiveValue(null);
                 picker = callback;
                 Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, BOOK_MIME_TYPES);
+                    .setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, BOOK_MIME_TYPES)
+                    .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
                 try { startActivityForResult(pick, PICK_BOOK); }
-                catch (ActivityNotFoundException error) { selectedBook(null); }
+                catch (ActivityNotFoundException error) { selectedBooks(null); }
                 return true;
             }
         });
@@ -158,10 +161,24 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void selectedBook(Uri uri) {
+    private void selectedBooks(Uri[] files) {
         ValueCallback<Uri[]> callback = picker;
         picker = null;
-        if (callback != null) callback.onReceiveValue(uri == null ? null : new Uri[] { uri });
+        if (callback != null) callback.onReceiveValue(files);
+    }
+
+    private static Uri[] pickedBookUris(Intent data) {
+        if (data == null) return null;
+        LinkedHashSet<Uri> files = new LinkedHashSet<>();
+        ClipData selection = data.getClipData();
+        if (selection != null) {
+            for (int index = 0; index < selection.getItemCount(); index++) {
+                Uri file = selection.getItemAt(index).getUri();
+                if (file != null) files.add(file);
+            }
+        }
+        if (data.getData() != null) files.add(data.getData());
+        return files.isEmpty() ? null : files.toArray(new Uri[0]);
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -170,9 +187,12 @@ public final class MainActivity extends Activity {
             updater.onResult(request);
             return;
         }
-        Uri file = result == RESULT_OK && data != null ? data.getData() : null;
-        if (request == PICK_BOOK) selectedBook(file);
+        if (request == PICK_BOOK) {
+            selectedBooks(result == RESULT_OK ? pickedBookUris(data) : null);
+            return;
+        }
         if (request != SAVE_FILE || saveJob == null) return;
+        Uri file = result == RESULT_OK && data != null ? data.getData() : null;
         SaveJob job = saveJob;
         if (file == null) {
             saveJob = null;
@@ -218,7 +238,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
-        selectedBook(null);
+        selectedBooks(null);
         network.close();
         speech.close();
         updater.close();

@@ -31,6 +31,7 @@ const voice = installVoice({
 let reader;
 let toastTimeout;
 let changingBook;
+let importingBooks = false;
 let exportBusy = false;
 let savedKey;
 let credentialError = '';
@@ -412,27 +413,63 @@ async function closeBookTab(id) {
   renderBookTabs();
 }
 
-async function importBook(file) {
-  if (!file) return;
-  if (state.stream) {
-    feedback('请先结束当前讲解，再导入课本。');
-    return;
-  }
-  const extension = bookFormat(file);
-  if (!extension) {
-    feedback('请选择 PDF、Word（.docx、.doc）或 PPT（.pptx、.ppt）文件。');
-    return;
-  }
-  const title = file.name.replace(new RegExp(`\\.${extension}$`, 'i'), '').slice(0, 290) || '未命名课件';
-  const book = { id: newId(), title, file, extension, imported: Date.now() };
-  showPanel('book');
-  if (!await activateBook(book)) return;
+async function importBooks(files) {
+  if (!files.length || importingBooks) return;
+  importingBooks = true;
+  $('pdf-open').disabled = $('library-import').disabled = true;
   try {
-    await saveBook(book);
-    if (state.book.id === book.id) await saveState('activeBook', book.id);
-    feedback('课本已保存到本机书架。');
-  } catch {
-    feedback('本机存储空间不足，当前课本仅在本次页面中可用。');
+    await bookReady;
+    if (state.stream || changingBook) {
+      feedback('请等当前讲解或课本打开后再导入。');
+      return;
+    }
+    const books = [];
+    for (const file of files) {
+      const extension = bookFormat(file);
+      if (!extension) continue;
+      const title = file.name.replace(new RegExp(`\\.${extension}$`, 'i'), '').slice(0, 290) || '未命名课件';
+      books.push({ id: newId(), title, file, extension, imported: Date.now() });
+    }
+    if (!books.length) {
+      feedback('请选择 PDF、Word（.docx、.doc）或 PPT（.pptx、.ppt）文件。');
+      return;
+    }
+    showPanel('book');
+    if (books.length > 1) feedback(`正在导入 ${books.length} 份课件…`);
+    let opened = false;
+    let saved = 0;
+    let temporary = 0;
+    let rejected = files.length - books.length;
+    let openError;
+    for (const book of books) {
+      let activated = false;
+      if (!opened && !changingBook && !state.stream) {
+        try { activated = await activateBook(book); }
+        catch (error) {
+          openError = error;
+          rejected++;
+          continue;
+        }
+        opened = activated;
+      }
+      try {
+        await saveBook(book);
+        saved++;
+      } catch { temporary++; }
+      if (!activated) {
+        bookTitles.set(book.id, book.title);
+        openBooks.push(book);
+      }
+    }
+    renderBookTabs();
+    if (!saved && !temporary && openError) throw openError;
+    const result = [`已保存 ${saved} 份课件`];
+    if (temporary) result.push(`${temporary} 份未能保存，仅本次可用`);
+    if (rejected) result.push(`已跳过 ${rejected} 份无法导入的文件`);
+    feedback(result.join('，') + '。');
+  } finally {
+    importingBooks = false;
+    $('pdf-open').disabled = $('library-import').disabled = false;
   }
 }
 
@@ -472,7 +509,7 @@ async function openLibrary() {
 }
 
 async function openSettings(section) {
-  await Promise.all([credentialsReady, preferencesReady]);
+  await Promise.all([credentialsReady, preferencesReady, fingerInkReady]);
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
   $('credential-fields').hidden = !state.config.canSupplyCredentials;
@@ -800,11 +837,15 @@ $('library-open').onclick = () => openLibrary().catch(failure);
 $('book-tab-add').onclick = () => openLibrary().catch(failure);
 $('library-import').onclick = () => { $('library').close(); $('pdf-file').click(); };
 $('pdf-file').onchange = (event) => {
-  const [file] = event.target.files;
+  const files = Array.from(event.target.files);
   event.target.value = '';
-  importBook(file).catch(failure);
+  importBooks(files).catch(failure);
 };
 $('settings-open').onclick = openSettings;
+$('finger-ink').onchange = (event) => {
+  reader.fingerInk = event.target.checked;
+  saveState('fingerInk', reader.fingerInk).catch(() => feedback('手指书写设置仅在本次打开期间生效。'));
+};
 $('app-version').textContent = '当前版本 v' + version;
 $('settings-changelog').addEventListener('toggle', () => {
   const section = $('settings-changelog-content');
@@ -941,8 +982,6 @@ $('settings-form').onsubmit = async (event) => {
   teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
     style: trim('teacher-style') };
   const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
-  reader.fingerInk = $('finger-ink').checked;
-  saveState('fingerInk', reader.fingerInk).catch(() => {});
   $('settings').close();
   await refreshConfiguration();
   feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
@@ -967,26 +1006,25 @@ $('teach-next').onclick = () => teach('请接着上一页，讲解当前页的�
 for (const target of document.querySelectorAll('[data-suggest]')) target.onclick = () => teach(target.dataset.suggest);
 
 reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
+const fingerInkReady = readState('fingerInk').catch(() => false).then((value) => { reader.fingerInk = value; });
 installDividers();
 installScrollThumb($('reader'));
 installScrollThumb($('chat-scroll'));
 installTheme();
-const whiteboard = installWhiteboard({ notify: feedback });
+const whiteboard = installWhiteboard({ notify: feedback, allowFingerInk: () => reader.fingerInk });
 installPenShortcuts({ reader, whiteboard, showBook: () => showPanel('book') });
 if (nativeApp) $('export-docx').textContent = '保存 Word';
 async function initialize() {
   await credentialsReady;
   refreshConfiguration();
-  const [bookId, records, fingerInk, exports, tabIds, books, names] = await Promise.all([
+  const [bookId, records, exports, tabIds, books, names] = await Promise.all([
     readState('activeBook').catch(() => null),
     listRecords().catch(() => []),
-    readState('fingerInk').catch(() => false),
     readState('feishuExports').catch(() => []),
     readState('openBooks').catch(() => []),
     listBooks().catch(() => []),
     readState('renamedBooks').catch(() => []),
   ]);
-  reader.fingerInk = fingerInk;
   state.exports = exports || [];
   state.records = records.sort((a, b) => a.date.localeCompare(b.date));
   $('record-count').textContent = state.records.length;
@@ -1005,4 +1043,4 @@ async function initialize() {
     if (book && book.id !== sample.id) await activateBook(sample).catch(failure);
   }
 }
-initialize().catch(failure);
+const bookReady = initialize().catch(failure);

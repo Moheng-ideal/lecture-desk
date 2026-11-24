@@ -21,10 +21,10 @@ struct Index {
     return this.getUIContext().getHostContext() as common.UIAbilityContext;
   }
 
-  private async pickBook(result: FileSelectorResult): Promise<void> {
+  private async pickBooks(result: FileSelectorResult, multiple: boolean): Promise<void> {
     try {
       const options = new picker.DocumentSelectOptions();
-      options.maxSelectNumber = 1;
+      options.maxSelectNumber = multiple ? 500 : 1;
       options.fileSuffixFilters = ['课件 (*.pdf;*.docx;*.doc;*.pptx;*.ppt)|.pdf,.docx,.doc,.pptx,.ppt'];
       const files = await new picker.DocumentViewPicker(this.getAbility()).select(options);
       result.handleFileList(files);
@@ -106,7 +106,7 @@ struct Index {
         })
         .onShowFileSelector((event) => {
           if (!event) return false;
-          this.pickBook(event.result);
+          this.pickBooks(event.result, event.fileSelector.getMode() === FileSelectorMode.FileOpenMultipleMode);
           return true;
         })
       if (this.startupFailed) {
