@@ -23,6 +23,12 @@ function bridge() {
   });
 }
 
+export async function androidPenTest() {
+  const native = await bridge();
+  if (typeof native.startPenInputTest !== 'function') throw new Error('请安装支持轻捏测试的 APK。');
+  return { start: () => native.startPenInputTest(), stop: () => native.stopPenInputTest() };
+}
+
 export async function checkAndroidUpdate() {
   const native = await bridge();
   if (typeof native.checkForUpdate !== 'function') throw new Error('此版本的安装包暂不支持应用内更新。');

@@ -530,3 +530,6 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .pen-shortcuts[data-compact] #pen-shortcuts-title { position: static; display: table; transform: none; margin: 0 auto 5px; }
 .pen-shortcuts[data-compact] .pen-shortcuts-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
 .pen-shortcuts[data-compact] .pen-shortcuts-actions button { position: static; width: auto; transform: none; }
+
+#pen-input-test button { margin-block: 7px; }
+#pen-test-result { max-height: 12rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

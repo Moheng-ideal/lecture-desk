@@ -814,6 +814,58 @@ $('settings-changelog').addEventListener('toggle', () => {
 });
 if (import.meta.env.MODE === 'android') {
   $('check-update').hidden = false;
+  $('pen-input-test').hidden = false;
+  const penButton = $('pen-test-start');
+  const penStatus = $('pen-test-status');
+  const penResult = $('pen-test-result');
+  let penTest;
+  let penTimer;
+  let penGeneration = 0;
+  const endPenTest = () => {
+    penGeneration++;
+    clearTimeout(penTimer);
+    penTest?.stop();
+    penTest = undefined;
+    penButton.disabled = false;
+    penStatus.textContent = '';
+  };
+  $('settings').addEventListener('close', endPenTest);
+  $('pen-input-test').addEventListener('toggle', () => {
+    if (!$('pen-input-test').open) endPenTest();
+  });
+  penButton.onclick = async () => {
+    const generation = ++penGeneration;
+    penButton.disabled = true;
+    penResult.hidden = true;
+    penStatus.textContent = '准备开始…';
+    try {
+      const { androidPenTest } = await import('./harmony.js');
+      const test = await androidPenTest();
+      if (generation !== penGeneration || !$('settings').open || !$('pen-input-test').open) return;
+      penTest = test;
+      penTest.start();
+      penTimer = setTimeout(() => {
+        endPenTest();
+        penStatus.textContent = '测试超时，可以再试一次。';
+      }, 16000);
+    } catch (error) {
+      if (generation !== penGeneration) return;
+      endPenTest();
+      penStatus.textContent = error.message;
+    }
+  };
+  window.addEventListener('lecture-desk-native', (event) => {
+    if (!penTest) return;
+    if (event.detail?.kind === 'pen-test-ready') {
+      penStatus.textContent = '请轻捏笔身两到三次，让笔尖悬空，屏幕保持在此页。';
+    }
+    if (event.detail?.kind === 'pen-test-result') {
+      endPenTest();
+      penStatus.textContent = '测试结束。请把下面的结果截图发过来。';
+      penResult.textContent = event.detail.value;
+      penResult.hidden = false;
+    }
+  });
   $('check-update').onclick = async () => {
     try {
       const { checkAndroidUpdate } = await import('./harmony.js');

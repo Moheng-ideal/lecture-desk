@@ -41,6 +41,7 @@ public final class MainActivity extends Activity {
     private DeskNetwork network;
     private DeskSpeech speech;
     private DeskUpdater updater;
+    private final PenInputTest penTest = new PenInputTest(this);
 
     private static class SaveJob {
         final String id;
@@ -80,6 +81,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        penTest.motion("TOUCH", event);
         if (handlePenButton(event)) return true;
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
@@ -93,16 +95,23 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        penTest.motion("MOTION", event);
         return handlePenButton(event) || super.dispatchGenericMotionEvent(event);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        penTest.key(event);
         int key = event.getKeyCode();
         if (key == KeyEvent.KEYCODE_STYLUS_BUTTON_PRIMARY || key == KeyEvent.KEYCODE_STYLUS_BUTTON_SECONDARY) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) openPenShortcuts();
             return true;
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        penTest.focus(focused);
     }
 
     private boolean handlePenButton(MotionEvent event) {
@@ -184,6 +193,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (penTest.back()) return;
         view.evaluateJavascript("(function(){const dialog=document.querySelector('dialog[open]');" +
             "if(dialog){dialog.close();return true;}const palette=document.querySelector('#pen-shortcuts:not([hidden]):not([inert])');" +
             "if(palette){document.getElementById('pen-shortcuts-open').click();return true;}const board=document.querySelector('#class-board:not([hidden])');" +
@@ -204,6 +214,7 @@ public final class MainActivity extends Activity {
         network.close();
         speech.close();
         updater.close();
+        penTest.stop();
         disk.shutdown();
         setContentView(new android.widget.FrameLayout(this));
         view.destroy();
@@ -212,6 +223,14 @@ public final class MainActivity extends Activity {
 
     private final class DeskBridge {
         private final DeskCredentials credentials = new DeskCredentials(MainActivity.this);
+
+        @JavascriptInterface public void startPenInputTest() {
+            runOnUiThread(() -> { if (!destroyed) penTest.start(); });
+        }
+
+        @JavascriptInterface public void stopPenInputTest() {
+            runOnUiThread(() -> penTest.stop());
+        }
 
         @JavascriptInterface public void checkForUpdate() {
             runOnUiThread(() -> { if (!destroyed) updater.check(); });
