@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 
 SERVER = "http://8.141.106.190/lecture-desk/"
-GITHUB = "https://api.github.com/repos/Moheng-ideal/lecture-desk/releases/latest"
+GITHUB = "repos/Moheng-ideal/lecture-desk/releases/latest"
 
 REMOTE = r"""
 import fcntl
@@ -97,8 +97,8 @@ with (folder / '.publish.lock').open('a') as lock:
 """
 
 
-def read_json(url, accept="application/json"):
-    request = Request(url, headers={"Accept": accept, "User-Agent": "LectureDesk-Release",
+def read_json(url):
+    request = Request(url, headers={"Accept": "application/json", "User-Agent": "LectureDesk-Release",
                                     "Cache-Control": "no-cache"})
     with urlopen(request, timeout=30) as response:
         return json.load(response)
@@ -124,6 +124,7 @@ def main():
     parser.add_argument("--ssh", required=True, help="SSH alias or user@host for the mirror")
     parser.add_argument("--identity-file", type=Path)
     parser.add_argument("--known-hosts", type=Path)
+    parser.add_argument("--gh", default="gh", help="Path to an authenticated GitHub CLI")
     args = parser.parse_args()
 
     match = re.fullmatch(r"lecture-desk-android-((0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?))\.apk",
@@ -155,7 +156,7 @@ def main():
         print("Verified mirror APK: " + apk_url)
         return
 
-    github = read_json(GITHUB, "application/vnd.github+json")
+    github = json.loads(subprocess.check_output([args.gh, "api", "--hostname", "github.com", GITHUB]))
     tag = f"v{version}-android"
     published = next((asset for asset in github["assets"] if asset["name"] == release["file"]), {})
     if (github["tag_name"] != tag or github.get("draft") or github.get("prerelease")
