@@ -8,7 +8,7 @@
 
 ## 下载安装
 
-**[下载讲课台 v0.7.7（Android APK）](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.7.7-android/lecture-desk-android-0.7.7.apk)** · [查看发布记录](https://github.com/Moheng-ideal/lecture-desk/releases) · [更新日志](CHANGELOG.md)
+**讲课台 v0.8.0（Android APK）** · [服务器下载](http://8.141.106.190/lecture-desk/lecture-desk-android-0.8.0.apk) · [GitHub 下载](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.8.0-android/lecture-desk-android-0.8.0.apk) · [更新日志](CHANGELOG.md)
 
 - Android 平板下载 APK 后，打开文件并按系统提示安装。
 - HarmonyOS 5.0 及以上的华为平板，可在支持的机型上通过「卓易通」打开 APK 并尝试安装，兼容性以设备实测为准。开发者也可以参考[鸿蒙工程及真机签名说明](harmony/README.md)。
@@ -21,7 +21,7 @@
 - **DeepSeek 讲解师**。可直接分析课件截图或讲解当前页，每次提问最多带 8 张截图。内置公式排版和教学示意图，公式随回答生成显示。可设置自定义提示词和用户画像。Android 版支持按住录音，松手后由 DeepSeek 转写并提问。
 - **问答录**。问题、课件截图、历史文字引用和 AI 回答可按课本折叠查看，支持整本或逐条选择，导出为 Word 或保存为可编辑的飞书云文档。
 
-Android 版可在「设置 → 检查更新」下载 GitHub 上的新版，再按系统提示覆盖安装。覆盖安装会保留本机课本、批注、问答和设置。在设置中展开「更新日志」可离线查看版本改动。
+Android 和卓易通版可在「设置 → 检查更新」选择「从服务器下载」或「从 GitHub 下载」。按系统提示覆盖安装可保留本机课本、批注、问答和设置。在设置中展开「更新日志」可离线查看版本改动。
 
 阅读、批注和白板可离线使用。首次使用讲解师时，在「设置」填写 DeepSeek API Key，后续打开应用会自动读取。飞书配置可在设置中查看「如何接入飞书」。
 

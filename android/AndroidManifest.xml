@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application android:label="讲课台" android:icon="@drawable/app_icon"
         android:allowBackup="false" android:usesCleartextTraffic="false" android:extractNativeLibs="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <provider android:name=".UpdateApkProvider"
             android:authorities="cn.lecturedesk.android.updates"
