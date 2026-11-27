@@ -1,4 +1,4 @@
-import { eraseAt, eraseInside, paintStrokes } from './ink.js';
+import { eraseAt, eraseInsidePartial, paintStrokes } from './ink.js';
 import { readState, saveState } from './storage.js';
 
 const byId = (id) => document.getElementById(id);
@@ -164,7 +164,7 @@ export class InkTools {
   }
 
   erase(strokes, path, point, width, height, zoom, stylus, radiusScale = 1) {
-    if (this.eraser.mode === 'lasso') return eraseInside(strokes, path, this.eraser.markerOnly);
+    if (this.eraser.mode === 'lasso') return eraseInsidePartial(strokes, path, this.eraser.markerOnly);
     return eraseAt(strokes, point, width, height, this.radius(point, stylus) * radiusScale, { ...this.eraser, zoom });
   }
 }

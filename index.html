@@ -20,6 +20,7 @@
     <div class="header-actions">
       <button type="button" id="pen-shortcuts-open" class="quiet" aria-label="笔快捷工具" aria-controls="pen-shortcuts" aria-expanded="false">笔工具</button>
       <button type="button" id="board-open" class="outline" aria-controls="class-board" aria-expanded="false">白板</button>
+      <button type="button" id="note-open" class="outline" aria-controls="note-board" aria-expanded="false">笔记</button>
       <button type="button" id="settings-open" class="quiet"><span aria-hidden="true">⚙</span> 设置</button>
       <button type="button" id="records-open" class="accent">问答录 <span id="record-count">0</span></button>
     </div>
@@ -177,6 +178,7 @@
           <button type="button" id="board-zoom-reset" aria-label="回到白板原点并重置缩放" title="回到原点">100%</button>
           <button type="button" id="board-zoom-in" aria-label="放大白板">＋</button>
         </div>
+        <button type="button" id="board-reset-size" class="quiet" title="恢复默认窗口大小，不清空笔迹">重置大小</button>
         <button type="button" id="board-close" class="quiet" aria-label="收起白板">收起</button>
       </header>
       <div class="board-tool-area">
@@ -194,6 +196,43 @@
         <canvas id="board-ink" aria-label="白板画布"></canvas>
         <canvas id="board-draft" aria-hidden="true"></canvas>
       </div>
+      <button type="button" class="board-edge" data-board-resize="w" aria-label="拖动左边缘或按方向键调整窗口宽度"></button>
+      <button type="button" class="board-edge" data-board-resize="e" aria-label="拖动右边缘或按方向键调整窗口宽度"></button>
+      <button type="button" class="board-edge" data-board-resize="s" aria-label="拖动下边缘或按方向键调整窗口高度"></button>
+      <button type="button" class="board-corner" data-board-resize="nw" aria-label="拖动左上角或按方向键调整窗口大小"></button>
+      <button type="button" class="board-corner" data-board-resize="ne" aria-label="拖动右上角或按方向键调整窗口大小"></button>
+      <button type="button" class="board-corner" data-board-resize="sw" aria-label="拖动左下角或按方向键调整窗口大小"></button>
+      <button type="button" class="board-corner" data-board-resize="se" aria-label="拖动右下角或按方向键调整窗口大小"></button>
+    </aside>
+    <aside id="note-board" aria-label="笔记" hidden>
+      <header class="board-head">
+        <h2><button type="button" id="note-move" aria-label="笔记，拖动或按方向键移动小窗" title="拖动移动笔记">笔记</button></h2>
+        <span id="note-title" class="note-title">未命名笔记</span>
+        <button type="button" id="note-list-open" class="quiet" aria-label="打开笔记列表">笔记列表</button>
+        <select id="note-background" class="quiet" aria-label="页面背景"></select>
+        <button type="button" id="note-close" class="quiet" aria-label="收起笔记">收起</button>
+      </header>
+      <div class="board-tool-area">
+        <div class="board-tools" id="note-tools" aria-label="笔记工具">
+          <button type="button" data-note-tool="select" aria-pressed="false" aria-label="选择"><svg class="note-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3l14.5 7.6-6.5 1.5 3.4 6.2-2.7 1.5-3.4-6.2L5 19.6z" fill="currentColor"/></svg></button>
+          <button type="button" data-note-tool="pen" aria-pressed="true" title="触控笔或手指书写">笔</button>
+          <button type="button" data-note-tool="marker" aria-pressed="false">荧光笔</button>
+          <button type="button" data-note-tool="eraser" aria-pressed="false">橡皮</button>
+          <button type="button" id="note-insert-text" class="quiet">文字</button>
+          <button type="button" id="note-insert-image" class="quiet">插入截图</button>
+          <button type="button" id="note-insert-quote" class="quiet">插入摘录</button>
+          <button type="button" id="note-export-pdf" class="quiet">导出 PDF</button>
+          <button type="button" id="note-undo" class="quiet" aria-label="撤销上一笔">↶</button>
+          <button type="button" id="note-clear" class="quiet">清空本页笔迹</button>
+          <button type="button" id="note-clear-blank" class="quiet">清除空白页</button>
+        </div>
+      </div>
+      <div id="note-pages" class="note-pages" tabindex="0"></div>
+      <div id="note-pick-image" class="note-pick" hidden>
+        <div class="note-pick-head"><strong id="note-pick-title">插入哪张截图？</strong><button type="button" id="note-pick-close" class="quiet">关闭</button></div>
+        <div id="note-pick-list" class="note-pick-list"></div>
+      </div>
+      <div id="note-list" class="note-list" hidden></div>
       <button type="button" class="board-edge" data-board-resize="w" aria-label="拖动左边缘或按方向键调整窗口宽度"></button>
       <button type="button" class="board-edge" data-board-resize="e" aria-label="拖动右边缘或按方向键调整窗口宽度"></button>
       <button type="button" class="board-edge" data-board-resize="s" aria-label="拖动下边缘或按方向键调整窗口高度"></button>

@@ -336,6 +336,206 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 #board-close { min-height: 36px; padding-inline: 7px; }
 #board-surface { position: relative; flex: 1; min-height: 0; background: #fff; overflow: hidden; border-radius: 0 0 13px 13px; }
 #board-surface canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+
+/* --- note board ---------------------------------------------------------- */
+#note-board {
+  pointer-events: auto;
+  --board-corner-size: 28px;
+  --board-edge-size: 15px;
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: var(--board-window-height);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 14px 42px #221d1b45, 0 2px 8px #221d1b25;
+  z-index: 30;
+}
+#note-board[data-moving-window] .board-head { cursor: grabbing; }
+#note-move { flex: 0 0 auto; text-align: left; cursor: inherit; padding-inline: 4px; min-height: 0; }
+#note-move::before {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 7px;
+  margin-right: 7px;
+  border-block: 1px solid currentColor;
+  vertical-align: .13em;
+  color: var(--muted);
+}
+.note-title {
+  flex: 1;
+  min-width: 0;
+  margin-inline: 8px 6px;
+  font-size: .85rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-pages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+  margin-right: 14px;
+  background: var(--desk);
+  border-radius: 0 0 13px 13px;
+  scrollbar-width: thin;
+}
+/* Keep the east resize handle narrow so it no longer sits on top of the list
+   scrollbar (the gutter was being grabbed as a resize). */
+#note-board [data-board-resize="e"],
+#note-board [data-board-resize="w"] { width: 8px; }
+.note-page-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}
+.note-page-remove[hidden] { display: none; }
+.note-items { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.note-item { position: absolute; pointer-events: auto; }
+.note-item-body { display: block; width: 100%; min-height: 1.4em; }
+.note-item-image .note-item-body { display: block; width: 100%; height: auto; border-radius: 4px; }
+.note-item-text .note-item-body {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px dashed #b9c6d4;
+  border-radius: 4px;
+  background: #fffdf7d9;
+  color: var(--ink);
+  line-height: 1.45;
+  outline: none;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  opacity: .74;
+  transition: opacity 120ms ease;
+}
+.note-item-text .note-item-body:focus {
+  opacity: 1;
+  border-color: var(--green);
+  background: #fffef5;
+}
+.note-item-text .note-item-body:empty::before {
+  content: attr(data-placeholder);
+  color: #a8a29a;
+}
+.note-page[data-note-select="true"] .note-item { cursor: grab; }
+.note-item.dragging { opacity: .85; cursor: grabbing; }
+.note-item-tools {
+  position: absolute;
+  z-index: 3;
+  top: -42px;
+  right: 0;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 2px 10px #221d1b26;
+}
+.note-item:hover .note-item-tools,
+.note-item-tools:focus-within { display: flex; }
+.note-item.editing .note-item-tools { display: flex; }
+.note-item-tools button { width: 26px; height: 26px; padding: 0; font-size: .8rem; }
+.note-item-tools input[type="color"] { width: 28px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+.note-item-handle {
+  position: absolute;
+  z-index: 3;
+  right: -7px;
+  bottom: -7px;
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--green);
+  border-radius: 4px;
+  background: #fff;
+  cursor: nwse-resize;
+}
+.note-item:hover .note-item-handle { display: block; }
+.note-item.editing .note-item-handle { display: block; }
+.note-select-icon { display: block; width: 16px; height: 16px; margin: 0 auto; }
+.note-pick {
+  position: absolute;
+  z-index: 9;
+  inset: 46px 12px auto 12px;
+  max-height: 62%;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 10px 28px #221d1b30;
+}
+.note-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 8px; }
+.note-pick-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.note-pick-item { padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.note-pick-item img { display: block; width: 100%; height: 76px; object-fit: contain; }
+.note-pick-quote { display: flex; align-items: flex-start; gap: 4px; text-align: left; padding: 8px; font-size: .78rem; line-height: 1.45; color: var(--ink); }
+.note-pick-quote span { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+.note-page {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 210 / 297;
+  margin: 0 0 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px #0001;
+}
+.note-page[data-background="lined"] {
+  background-image: repeating-linear-gradient(transparent 0 27px, #c9d6e2 27px 28px);
+}
+.note-page[data-background="grid"] {
+  background-image:
+    linear-gradient(#c9d6e2 1px, transparent 1px),
+    linear-gradient(90deg, #c9d6e2 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+.note-page[data-background="dots"] {
+  background-image: radial-gradient(circle, #b9c6d4 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+}
+.note-ink { position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.note-list {
+  position: absolute;
+  z-index: 8;
+  inset: 46px 12px auto 12px;
+  max-height: 62%;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 10px 28px #221d1b30;
+}
+.note-list-head { padding: 4px; }
+.note-list-head button { width: 100%; }
+.note-list-row { display: flex; align-items: center; gap: 6px; padding: 4px; border-radius: 8px; }
+.note-list-row.active { background: var(--accent-soft); }
+.note-list-row button { min-height: 34px; }
+.note-list-pick { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+.note-list-pick small { color: var(--muted); font-size: .76rem; }
 #board-ink { touch-action: none; cursor: crosshair; }
 #board-surface[data-moving] #board-ink { cursor: grab; }
 #board-surface[data-moving] #board-ink:active { cursor: grabbing; }

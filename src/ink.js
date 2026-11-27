@@ -129,6 +129,32 @@ export function eraseInside(strokes, polygon, markerOnly) {
   return remaining.length === strokes.length ? strokes : remaining;
 }
 
+// Lasso erase that cuts strokes instead of dropping whole ones: points inside
+// the polygon are removed and the remaining runs stay as separate fragments.
+export function eraseInsidePartial(strokes, polygon, markerOnly) {
+  if (polygon.length < 3) return strokes;
+  let changed = false;
+  const result = strokes.flatMap((stroke) => {
+    if (markerOnly && stroke.tool !== 'marker') return [stroke];
+    const { points } = stroke;
+    if (!points.length) return [stroke];
+    const runs = [];
+    let run = [];
+    for (const point of points) {
+      if (inside(point, polygon)) {
+        if (run.length) { runs.push(run); run = []; }
+      } else {
+        run.push(point);
+      }
+    }
+    if (run.length) runs.push(run);
+    if (runs.length === 1 && runs[0].length === points.length) return [stroke];
+    changed = true;
+    return runs.filter((segment) => segment.length).map((segment) => ({ ...stroke, points: segment }));
+  });
+  return changed ? result : strokes;
+}
+
 export function paintStrokes(canvas, strokes, zoom = 1, draft, cssWidth = canvas.clientWidth) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;

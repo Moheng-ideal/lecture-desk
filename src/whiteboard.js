@@ -141,8 +141,8 @@ export function installWhiteboard({ notify, allowFingerInk }) {
 
   function drawEraser(ctx, active) {
     ctx.strokeStyle = '#506955';
-    ctx.lineWidth = 1.5 / camera.zoom;
-    ctx.setLineDash([4 / camera.zoom, 3 / camera.zoom]);
+    ctx.lineWidth = 2 / camera.zoom;
+    ctx.setLineDash([6 / camera.zoom, 4 / camera.zoom]);
     ctx.beginPath();
     if (tools.eraser.mode === 'lasso') {
       for (const point of active.path) ctx.lineTo(point.x, point.y);
@@ -230,7 +230,7 @@ export function installWhiteboard({ notify, allowFingerInk }) {
 
   const boardWindow = installBoardWindow(board, stopInkInput);
   function toggle(visible) {
-    if (visible) boardWindow.reset();
+    if (visible) boardWindow.reopen();
     else {
       boardWindow.finish();
       stopInkInput();
@@ -244,6 +244,7 @@ export function installWhiteboard({ notify, allowFingerInk }) {
     }
   }
   open.onclick = () => { stopInkInput(); toggle(true); };
+  id('board-reset-size').onclick = () => { stopInkInput(); boardWindow.resetSize(); };
   id('board-close').onclick = () => {
     toggle(false);
     open.focus();

@@ -21,11 +21,11 @@ function fit(rect, bounds) {
   return { x: clamp(rect.x, left, right - width), y: clamp(rect.y, top, bottom - height), width, height };
 }
 
-function initialRect(bounds, pane) {
+function initialRect(bounds, pane, defaultWidth = 540, defaultHeight = 490) {
   const availableWidth = bounds.right - bounds.left;
   const availableHeight = bounds.bottom - bounds.top;
-  const width = Math.min(540, pane.width ? Math.max(minWidth, pane.width - 24) : availableWidth * .88);
-  const height = Math.min(490, availableHeight * .55);
+  const width = Math.min(defaultWidth, pane.width ? Math.max(minWidth, pane.width - 24) : availableWidth * .88);
+  const height = Math.min(defaultHeight, availableHeight * .55);
   return fit({
     x: (pane.width ? pane.right : bounds.right) - width - 12,
     y: (pane.height ? pane.top : bounds.top) + 62,
@@ -50,9 +50,9 @@ function move(rect, edge, dx, dy, bounds) {
   return { x, y, width, height };
 }
 
-export function installBoardWindow(board, stopInkInput) {
+export function installBoardWindow(board, stopInkInput, { width: defaultWidth = 540, height: defaultHeight = 490 } = {}) {
   const heading = board.querySelector('.board-head');
-  const title = board.querySelector('#board-move');
+  const title = board.querySelector('#board-move, #note-move');
   const pane = document.getElementById("right-pane");
   let rect;
   let drag;
@@ -68,12 +68,42 @@ export function installBoardWindow(board, stopInkInput) {
 
   function reset() {
     finish();
-    paint(initialRect(viewportBounds(), pane.getBoundingClientRect()));
+    paint(initialRect(viewportBounds(), pane.getBoundingClientRect(), defaultWidth, defaultHeight));
+  }
+
+  // Reopening keeps the size the user last resized to, but puts the window back
+  // at its default position (and clamps the size to the current viewport).
+  function reopen() {
+    finish();
+    const bounds = viewportBounds();
+    const base = initialRect(bounds, pane.getBoundingClientRect(), defaultWidth, defaultHeight);
+    paint(fit({
+      x: base.x, y: base.y,
+      width: rect?.width ?? base.width,
+      height: rect?.height ?? base.height,
+    }, bounds));
+  }
+
+  // Restore the default window size anchored at the top-right corner: the
+  // top-right stays put, the window grows/shrinks leftward. Ink is untouched.
+  function resetSize() {
+    finish();
+    const bounds = viewportBounds();
+    const base = initialRect(bounds, pane.getBoundingClientRect(), defaultWidth, defaultHeight);
+    const right = rect ? rect.x + rect.width : base.x + base.width;
+    const top = rect?.y ?? base.y;
+    paint(fit({
+      x: right - base.width,
+      y: top,
+      width: base.width,
+      height: base.height,
+    }, bounds));
   }
 
   function start(event) {
     if (drag || event.button !== 0 || !rect) return;
-    if (event.currentTarget === heading && event.target.closest('button:not(#board-move)')) return;
+    if (event.currentTarget === heading &&
+      event.target.closest('button:not(#board-move):not(#note-move), select, option, input, textarea, label')) return;
     stopInkInput();
     const handle = event.currentTarget;
     drag = { id: event.pointerId, x: event.clientX, y: event.clientY, rect, handle, edge: handle.dataset.boardResize };
@@ -131,5 +161,5 @@ export function installBoardWindow(board, stopInkInput) {
     };
   }
 
-  return { reset, finish };
+  return { reset, reopen, resetSize, finish };
 }

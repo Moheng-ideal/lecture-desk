@@ -10,6 +10,7 @@ import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers } from './layout.js';
 import { installPenShortcuts } from './pen-shortcuts.js';
 import { installWhiteboard } from './whiteboard.js';
+import { installNoteBoard } from './note-board.js';
 import { installChatSelection } from './chat-selection.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
@@ -1035,6 +1036,17 @@ installScrollThumb($('reader'));
 installScrollThumb($('chat-scroll'));
 installTheme();
 const whiteboard = installWhiteboard({ notify: feedback, allowFingerInk: () => reader.fingerInk });
+installNoteBoard({
+  notify: feedback,
+  onInkInput: () => {},
+  snapshots: async ({ text = false } = {}) => state.references.filter((ref) => (text ? ref.text : ref.image)),
+  captureSelection: async () => {
+    try {
+      if (!reader?.bounds || !reader?.rendered) return null;
+      return await reader.capturePage(reader.page, reader.bounds, '选文截图');
+    } catch { return null; }
+  },
+});
 installPenShortcuts({ reader, whiteboard, showBook: () => showPanel('book') });
 if (nativeApp) $('export-docx').textContent = '保存 Word';
 async function initialize() {

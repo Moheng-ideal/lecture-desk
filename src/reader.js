@@ -796,8 +796,8 @@ export class Reader {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.strokeStyle = '#506955';
-    ctx.lineWidth = 1.5 * scale;
-    ctx.setLineDash([4 * scale, 3 * scale]);
+    ctx.lineWidth = 2 * scale;
+    ctx.setLineDash([6 * scale, 4 * scale]);
     ctx.beginPath();
     if (this.inkTools.eraser.mode === 'lasso') {
       for (const p of active.path) ctx.lineTo(p.x * canvas.width, p.y * canvas.height);
