@@ -371,34 +371,39 @@ export class Reader {
 
   async drawSurface(surface, generation) {
     const stillCurrent = () => surface.generation === generation && surface.source === this.documentSource;
+    let buffer;
+    let task;
     try {
       const page = await surface.source.getPage(surface.number);
       if (!stillCurrent()) return;
       surface.viewport = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: this.sizeSurface(surface) });
-      const contents = byId('page-template').content.firstElementChild.cloneNode(true);
-      const [canvas, ink, overlay, rect] = contents.children;
-      const refresh = surface.rendered;
-      if (!refresh) {
+      if (!surface.canvas) {
+        const contents = byId('page-template').content.firstElementChild.cloneNode(true);
+        const [canvas, ink, overlay, rect] = contents.children;
         surface.paper.setAttribute('aria-label', `第 ${surface.number} 页`);
         surface.paper.replaceChildren(contents);
         Object.assign(surface, { canvas, ink, overlay, rect });
       }
+      // Keep the displayed canvas attached while rendering a new zoom level.
+      if (surface.rendered) buffer = document.createElement('canvas');
+      const canvas = buffer || surface.canvas;
       const pixels = Math.min(window.devicePixelRatio || 1, 2.3, Math.sqrt(5000000 / (viewport.width * viewport.height)));
       canvas.width = Math.max(1, Math.ceil(viewport.width * pixels));
       canvas.height = Math.max(1, Math.ceil(viewport.height * pixels));
-      surface.renderTask = page.render({
+      task = page.render({
         canvasContext: canvas.getContext('2d'),
         viewport,
         transform: [pixels, 0, 0, pixels, 0, 0],
       });
-      await surface.renderTask.promise;
+      surface.renderTask = task;
+      await task.promise;
       if (!stillCurrent()) return;
-      if (refresh) {
-        const old = surface.canvas;
-        old.replaceWith(canvas);
-        old.width = old.height = 0;
-        surface.canvas = canvas;
+      if (buffer) {
+        const display = surface.canvas;
+        display.width = buffer.width;
+        display.height = buffer.height;
+        display.getContext('2d').drawImage(buffer, 0, 0);
       }
       surface.paper.firstElementChild.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
       surface.rendered = true;
@@ -410,6 +415,9 @@ export class Reader {
       }
     } catch (error) {
       if (stillCurrent() && !['RenderingCancelledException', 'AbortException'].includes(error.name)) throw error;
+    } finally {
+      if (task && surface.renderTask === task) surface.renderTask = null;
+      if (buffer) buffer.width = buffer.height = 0;
     }
   }
 
