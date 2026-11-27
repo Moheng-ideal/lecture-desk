@@ -15,6 +15,8 @@ import org.json.JSONObject;
 final class DeskNetwork {
     static final Pattern ID = Pattern.compile("[a-fA-F0-9-]{32,36}");
     private static final String FEISHU = "https://open.feishu.cn/open-apis";
+    private static final String GENIOS = "https://coze.nankai.edu.cn/api/proxy/api/v1/";
+    private static final String ZHIPU = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
     private static final String UPLOAD = FEISHU + "/drive/v1/files/upload_all";
     private static final String MEDIA_UPLOAD = FEISHU + "/drive/v1/medias/upload_all";
     private static final Pattern IMAGE_BLOCK = Pattern.compile(Pattern.quote(FEISHU) +
@@ -58,6 +60,9 @@ final class DeskNetwork {
 
     private static boolean isJsonEndpoint(String url) {
         return url.equals("https://api.deepseek.com/chat/completions") ||
+            url.equals(ZHIPU) ||
+            (url.startsWith(GENIOS) && (url.endsWith("/create_conversation") ||
+                url.endsWith("/chat_query_v2"))) ||
             url.equals(FEISHU + "/auth/v3/tenant_access_token/internal") ||
             url.equals(FEISHU + "/docx/v1/documents") || BLOCKS.matcher(url).matches() || IMAGE_BLOCK.matcher(url).matches();
     }
@@ -74,7 +79,12 @@ final class DeskNetwork {
             connection.setRequestMethod(IMAGE_BLOCK.matcher(url).matches() ? "PATCH" : "POST");
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", type);
-            if (!auth.isEmpty()) connection.setRequestProperty("Authorization", auth);
+            if (!auth.isEmpty()) {
+                // NK-GeniOS authenticates with the `Apikey` header; the JS bridge
+                // carries the key in the auth slot. DeepSeek/Feishu/Zhipu use Bearer.
+                if (url.startsWith(GENIOS)) connection.setRequestProperty("Apikey", auth);
+                else connection.setRequestProperty("Authorization", auth);
+            }
             byte[] data = upload ? Base64.decode(body, Base64.DEFAULT) : body.getBytes(StandardCharsets.UTF_8);
             connection.setFixedLengthStreamingMode(data.length);
             try (OutputStream output = connection.getOutputStream()) { output.write(data); }

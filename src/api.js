@@ -1,6 +1,6 @@
 import { nativeApp } from './platform.js';
 
-let settings = { access: '', deepseek: '', feishu: {} };
+let settings = { access: '', deepseek: '', vision: '', feishu: {} };
 
 async function appRequest(path, options) {
   if (nativeApp) {
@@ -53,7 +53,7 @@ export function suggestBookTitle(references, signal) {
 }
 
 async function streamDeepSeek(path, data, onText, signal) {
-  const response = await post(path, data, { deepseek: settings.deepseek }, signal);
+  const response = await post(path, data, { deepseek: settings.deepseek, vision: settings.vision }, signal);
   if (!response.headers.get('content-type')?.includes('text/event-stream') || !response.body) {
     throw new Error('讲解服务没有返回有效的流式回答。');
   }
@@ -78,7 +78,7 @@ async function streamDeepSeek(path, data, onText, signal) {
           break;
         }
         const packet = JSON.parse(value);
-        if (packet.error) throw new Error('DeepSeek 中断了本次讲解。');
+        if (packet.error) throw new Error('讲解服务中断了本次回答。');
         const choice = packet.choices?.[0];
         if (choice?.finish_reason) reason = choice.finish_reason;
         if (choice?.delta?.content) {
@@ -94,7 +94,7 @@ async function streamDeepSeek(path, data, onText, signal) {
   if (!finished || (reason && !['stop', 'length'].includes(reason))) {
     throw new Error('讲解未完整返回，可以重试。');
   }
-  if (!text.trim()) throw new Error('DeepSeek 没有返回讲解内容。');
+  if (!text.trim()) throw new Error('讲解服务没有返回内容。');
   if (reason === 'length') text += '\n\n（DeepSeek 已达到单次输出上限，可以继续追问。）';
   return text;
 }

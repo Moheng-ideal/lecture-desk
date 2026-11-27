@@ -11,7 +11,7 @@ const sendEvent = (id, kind, value) => window.dispatchEvent(
 );
 const ask = (signal) => requestFromHarmony('/api/chat', {
   method: 'POST', signal, headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ question: '怎么理解？', references: [], history: [], credentials: { deepseek: 'fixture' } }),
+  body: JSON.stringify({ question: '怎么理解？', references: [], history: [], credentials: { deepseek: 'sk-fixture' } }),
 });
 
 test('credential bridge distinguishes a missing store, a failed write and a cleared key', async () => {
@@ -41,7 +41,7 @@ test('the Harmony app can read configuration and receive DeepSeek chunks without
     startHttp(requestId, url, body, authorization) {
       id = requestId;
       assert.equal(url, 'https://api.deepseek.com/chat/completions');
-      assert.equal(authorization, 'Bearer fixture');
+      assert.equal(authorization, 'Bearer sk-fixture');
       assert.match(body, /怎么理解/);
       queueMicrotask(() => sendEvent(id, 'headers', '{"Content-Type":"text/event-stream"}'));
       return true;

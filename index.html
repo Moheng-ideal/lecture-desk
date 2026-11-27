@@ -147,6 +147,7 @@
             </div>
             <ol id="messages" aria-label="问答对话"></ol>
           </div>
+          <div id="chat-selection-rect" hidden></div>
           <div class="scroll-thumb" role="scrollbar" tabindex="0" aria-label="讲解区滚动位置" aria-controls="chat-scroll" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden></div>
         </div>
         <form id="ask" class="composer">
@@ -264,7 +265,8 @@
         </details>
         <p id="configuration-hint"></p>
         <label id="pass-label" hidden>局域网访问口令<input id="access-code" type="password" maxlength="180" autocomplete="off"></label>
-        <label id="credential-fields">DeepSeek API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-…"></label>
+        <label id="credential-fields">DeepSeek / NK-GeniOS API Key<input id="deepseek-key" type="password" maxlength="180" autocomplete="off" placeholder="sk-… 或 NK-GeniOS 密钥"></label>
+        <label id="vision-field">视觉模型 API Key（可选）<input id="vision-key" type="password" maxlength="180" autocomplete="off" placeholder="智谱 GLM-4V，留空则用 OCR"></label>
         <p id="credential-status" role="status" hidden></p>
         <details class="teaching-settings">
           <summary>用户画像与回复风格</summary>

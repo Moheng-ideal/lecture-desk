@@ -9,7 +9,7 @@ import { IMAGE_LIMIT, isExcerptImage } from './excerpts.js';
 GlobalWorkerOptions.workerSrc = pdfWorker;
 const byId = (id) => document.getElementById(id);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const scanMessage = '拖动框选课本区域，可以连续添加多张截图。';
+const scanMessage = '课本或右侧问答区都可以拖动框选：课本生成截图，问答区生成文字摘录。';
 const zoomMin = .75;
 const zoomMax = 2.5;
 
@@ -18,11 +18,12 @@ function midpoint([a, b]) {
 }
 
 export class Reader {
-  constructor({ quote, notify, change, error }) {
+  constructor({ quote, notify, change, error, tool }) {
     this.onQuote = quote;
     this.notify = notify;
     this.onChange = change;
     this.onError = error;
+    this.onTool = tool;
     this.reader = byId('reader');
     this.stage = byId('page-stage');
     this.stack = byId('page-stack');
@@ -479,6 +480,7 @@ export class Reader {
       button.setAttribute('aria-pressed', String(button.dataset.tool === tool));
     }
     byId('selection-bar').hidden = tool !== 'select';
+    this.onTool?.(tool);
     this.inkTools.sync();
   }
 

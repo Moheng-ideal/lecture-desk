@@ -1,27 +1,27 @@
 {
-  "name": "lecture-desk",
-  "version": "0.8.6",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "vite build && node scripts/package.mjs",
-    "build:harmony": "node scripts/harmony.mjs",
-    "build:android-assets": "node scripts/harmony.mjs android",
-    "start": "node --env-file-if-exists=.env server/local.mjs",
-    "test": "node --test"
-  },
-  "dependencies": {
-    "@silurus/ooxml": "0.90.2",
-    "@silurus/ooxml-legacy-office": "0.90.2",
-    "docx": "9.5.1",
-    "dompurify": "^3.3.1",
-    "katex": "^0.16.25",
-    "marked": "^16.4.1",
-    "pdf-lib": "1.17.1",
-    "pdfjs-dist": "5.4.624"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.2",
-    "vite": "^7.2.2"
-  }
+    "name":  "lecture-desk",
+    "version":  "0.8.7",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "build":  "vite build \u0026\u0026 node scripts/package.mjs",
+                    "build:harmony":  "node scripts/harmony.mjs",
+                    "build:android-assets":  "node scripts/harmony.mjs android",
+                    "start":  "node --env-file-if-exists=.env server/local.mjs",
+                    "test":  "node --test"
+                },
+    "dependencies":  {
+                         "@silurus/ooxml":  "0.90.2",
+                         "@silurus/ooxml-legacy-office":  "0.90.2",
+                         "docx":  "9.5.1",
+                         "dompurify":  "^3.3.1",
+                         "katex":  "^0.16.25",
+                         "marked":  "^16.4.1",
+                         "pdf-lib":  "1.17.1",
+                         "pdfjs-dist":  "5.4.624"
+                     },
+    "devDependencies":  {
+                            "esbuild":  "^0.28.2",
+                            "vite":  "^7.2.2"
+                        }
 }

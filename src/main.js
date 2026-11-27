@@ -10,6 +10,7 @@ import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers } from './layout.js';
 import { installPenShortcuts } from './pen-shortcuts.js';
 import { installWhiteboard } from './whiteboard.js';
+import { installChatSelection } from './chat-selection.js';
 import { installTheme } from './theme.js';
 import { installVoice } from './voice.js';
 import { nativeApp } from './platform.js';
@@ -112,15 +113,17 @@ function displayExcerpts() {
 function addExcerpt(reference) {
   if (state.references.some((ref) => ref.bookId === reference.bookId && ref.page === reference.page &&
       ref.image === reference.image && ref.text === reference.text)) {
-    feedback('这张截图已经加入本次提问。');
+    feedback(reference.image ? '这张截图已经加入本次提问。' : '这段引用已经加入本次提问。');
     return;
   }
   if (state.references.length >= MAX_REFERENCES) {
-    throw new Error(`单次提问最多附上 ${MAX_REFERENCES} 张截图，请先移除一张。`);
+    throw new Error(`单次提问最多附上 ${MAX_REFERENCES} 项资料，请先移除一项。`);
   }
   state.references.push(reference);
   displayExcerpts();
-  feedback(`已添加截图，本次提问已附 ${state.references.length} 项资料。`);
+  feedback(reference.image
+    ? `已添加截图，本次提问已附 ${state.references.length} 项资料。`
+    : `已添加问答摘录，本次提问已附 ${state.references.length} 项资料。`);
 }
 
 function referenceDetails(reference) {
@@ -214,9 +217,15 @@ function syncChat() {
   $('stop').hidden = !busy;
   $('teach-page').disabled = busy || !reader?.rendered || Boolean(changingBook);
   $('teach-next').disabled = $('teach-page').disabled || reader.page >= reader.documentSource.numPages;
-  $('connection-state').textContent = state.config.unavailable ? 'DeepSeek · 服务不可用' :
-    state.config.requiresCode && !state.config.authorized ? 'DeepSeek · 请输入访问口令' :
-      state.config.deepseek || getConnections().deepseek ? 'DeepSeek Flash · 已配置' : 'DeepSeek · 待配置';
+  const providerKey = getConnections().deepseek || '';
+  const provider = providerKey.startsWith('sk-') ? 'DeepSeek' : providerKey ? 'NK-GeniOS' : 'DeepSeek';
+  const hasVision = state.config.vision || getConnections().vision;
+  $('connection-state').textContent = state.config.unavailable ? `${provider} · 服务不可用` :
+    state.config.requiresCode && !state.config.authorized ? `${provider} · 请输入访问口令` :
+      (state.config.deepseek || providerKey) && hasVision ?
+        `${provider} + 视觉模型 · 已配置` :
+        (state.config.deepseek || providerKey) ? `${provider} · 已配置（未配视觉模型）` :
+          'DeepSeek · 待配置';
 }
 
 async function refreshConfiguration() {
@@ -523,6 +532,7 @@ async function openSettings(section) {
       '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
   $('access-code').value = settings.access;
   $('deepseek-key').value = settings.deepseek;
+  $('vision-key').value = settings.vision || '';
   status('credential-status', credentialError);
   $('feishu-id').value = settings.feishu.appId || '';
   $('feishu-secret').value = settings.feishu.secret || '';
@@ -982,7 +992,7 @@ $('settings-form').onsubmit = async (event) => {
       credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。';
     } finally { if (submit) submit.disabled = false; }
   }
-  saveConnections({ access: trim('access-code'), deepseek, feishu });
+  saveConnections({ access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu });
   teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
     style: trim('teacher-style') };
   const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
@@ -1009,7 +1019,16 @@ $('teach-page').onclick = () => teach('请按课堂节奏讲解当前页，先�
 $('teach-next').onclick = () => teach('请接着上一页，讲解当前页的新内容。', true);
 for (const target of document.querySelectorAll('[data-suggest]')) target.onclick = () => teach(target.dataset.suggest);
 
-reader = new Reader({ quote: addExcerpt, notify: feedback, change: syncChat, error: failure });
+let chatSelection = { setEnabled() {} };
+reader = new Reader({
+  quote: addExcerpt, notify: feedback, change: syncChat, error: failure,
+  tool: (name) => chatSelection.setEnabled(name === 'select'),
+});
+chatSelection = installChatSelection({
+  quote: addExcerpt,
+  notify: feedback,
+  pageNumber: () => reader.page || 1,
+});
 const fingerInkReady = readState('fingerInk').catch(() => false).then((value) => { reader.fingerInk = value; });
 installDividers();
 installScrollThumb($('reader'));
