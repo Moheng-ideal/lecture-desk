@@ -19,6 +19,8 @@ export function installNoteBoard({ notify, onInkInput, snapshots, captureSelecti
   const listHost = document.getElementById('note-list');
   const titleLabel = document.getElementById('note-title');
   const backgroundSelect = document.getElementById('note-background');
+  const openButton = document.getElementById('note-open');
+  const closeButton = document.getElementById('note-close');
     if (!board || !pagesHost) return { open() {}, close() {}, toggle() {} };
 
   let notes = [];
@@ -34,10 +36,6 @@ export function installNoteBoard({ notify, onInkInput, snapshots, captureSelecti
   const stopInkInput = () => { draft = null; };
   const window_ = installBoardWindow(board, stopInkInput, { width: 780, height: 640 });
 
-  // Same brush engine as the book margins: brush type, size, opacity and colour
-  // all come from InkTools, so the note panel matches the reader sidebar. There
-  // is no dedicated "笔刷设置" button; tapping 笔/荧光笔 opens the panel, exactly
-  // like the reader toolbar does.
   const toolArea = board.querySelector('.board-tool-area');
   const toolsButton = document.createElement('button');
   toolsButton.type = 'button';
@@ -700,7 +698,7 @@ export function installNoteBoard({ notify, onInkInput, snapshots, captureSelecti
 
   // --- toolbar ---------------------------------------------------------------
   for (const button of board.querySelectorAll('[data-note-tool]')) {
-    button.onclick = () => noteTools.select(button.dataset.noteTool);
+    button.onclick = (event) => noteTools.select(button.dataset.noteTool, event);
   }
   const undoButton = document.getElementById('note-undo');
   if (undoButton) undoButton.onclick = () => {
@@ -999,6 +997,7 @@ export function installNoteBoard({ notify, onInkInput, snapshots, captureSelecti
     window_.reopen();
     board.hidden = false;
     opened = true;
+    openButton?.setAttribute('aria-expanded', 'true');
     titleLabel.textContent = active.title;
     if (backgroundSelect) backgroundSelect.value = active.background || 'lined';
     renderPages();
@@ -1008,12 +1007,12 @@ export function installNoteBoard({ notify, onInkInput, snapshots, captureSelecti
   async function close() {
     board.hidden = true;
     opened = false;
+    openButton?.setAttribute('aria-expanded', 'false');
+    noteTools.toggle(false);
     listHost?.setAttribute('hidden', '');
     await flushSave();
   }
 
-  const openButton = document.getElementById('note-open');
-  const closeButton = document.getElementById('note-close');
   if (openButton) openButton.onclick = () => { onInkInput?.(); open(); };
   if (closeButton) closeButton.onclick = () => { close(); openButton?.focus(); };
 

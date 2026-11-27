@@ -7,7 +7,7 @@ import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sen
 import { formatDate, groupRecords, sourceLabel } from './records.js';
 import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
 import { installScrollThumb } from './scroll-thumb.js';
-import { installDividers } from './layout.js';
+import { installDividers, installToolPressFeedback } from './layout.js';
 import { installPenShortcuts } from './pen-shortcuts.js';
 import { installWhiteboard } from './whiteboard.js';
 import { installNoteBoard } from './note-board.js';
@@ -1032,6 +1032,7 @@ chatSelection = installChatSelection({
 });
 const fingerInkReady = readState('fingerInk').catch(() => false).then((value) => { reader.fingerInk = value; });
 installDividers();
+installToolPressFeedback();
 installScrollThumb($('reader'));
 installScrollThumb($('chat-scroll'));
 installTheme();

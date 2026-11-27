@@ -258,7 +258,7 @@ export function installWhiteboard({ notify, allowFingerInk }) {
     for (const button of modes) button.setAttribute('aria-pressed', String(button.dataset.boardTool === tool));
     tools.sync();
   }
-  for (const button of modes) button.onclick = () => tools.select(button.dataset.boardTool);
+  for (const button of modes) button.onclick = (event) => tools.select(button.dataset.boardTool, event);
   undo.onclick = () => {
     endAction(true);
     if (!history.length) return;

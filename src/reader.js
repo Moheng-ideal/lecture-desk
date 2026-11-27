@@ -50,8 +50,12 @@ export class Reader {
     byId('modes').addEventListener('click', (event) => {
       const button = event.target.closest('[data-tool]');
       if (!button) return;
-      this.inkTools.select(button.dataset.tool);
+      this.inkTools.select(button.dataset.tool, event);
     });
+    byId('exit-selection').onclick = () => {
+      this.setTool('read');
+      this.reader.focus({ preventScroll: true });
+    };
     byId('use-selection').onclick = () => this.quoteSelection().catch(this.onError);
     byId('page-quote').onclick = () => this.quotePage().then(this.onQuote).catch(this.onError);
     byId('prev').onclick = () => this.setPage(this.page - 1).catch(this.onError);
