@@ -172,6 +172,9 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 .reader:is([data-tool="pen"], [data-tool="marker"], [data-tool="eraser"], [data-tool="select"]) .ink-canvas { pointer-events: auto; cursor: crosshair; }
 .reader:is([data-finger-ink="true"], [data-tool="select"]) .ink-canvas { touch-action: none; }
 .selection-rect { position: absolute; z-index: 3; border: 1px solid #3b614b; background: #6090712b; pointer-events: none; }
+#chat-scroll[data-chat-select="true"] { cursor: crosshair; touch-action: none; }
+#chat-selection-rect { position: fixed; z-index: 40; border: 1px solid #3b614b; background: #6090712b; pointer-events: none; }
+#chat-selection-rect[hidden] { display: none; }
 .reader-status { position: sticky; z-index: 4; bottom: 12px; width: fit-content; margin-inline: auto; border-radius: 10px; background: var(--paper); color: var(--muted); padding: 10px 14px; text-align: center; }
 .reader-footer { display: flex; justify-content: space-between; align-items: center; gap: 2px; padding: 2px 12px max(2px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--paper); }
 .reader-footer button { min-height: 38px; }

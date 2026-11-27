@@ -4,7 +4,7 @@ import { handleApi } from '../server/api.mjs';
 
 const origin = 'https://lecture.example';
 const environment = {
-  DEEPSEEK_API_KEY: 'test-key', TEACH_PASS: 'local-test-code',
+  DEEPSEEK_API_KEY: 'sk-test-key', VISION_API_KEY: 'sk-vision-test', TEACH_PASS: 'local-test-code',
   FEISHU_APP_ID: 'cli_fixture', FEISHU_APP_SECRET: 'test-secret',
   FEISHU_FOLDER_URL: 'https://fixture.feishu.cn/drive/folder/fldFixture',
 };
@@ -37,7 +37,7 @@ test('streams a grounded teaching request without sending the original PDF', asy
   const result = await handleApi(post('/api/chat', question), environment, {
     fetcher: async (url, config) => {
       assert.equal(url, 'https://api.deepseek.com/chat/completions');
-      assert.equal(config.headers.Authorization, 'Bearer test-key');
+      assert.equal(config.headers.Authorization, 'Bearer sk-test-key');
       outgoing = JSON.parse(config.body);
       return new Response('data: {"choices":[]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
     },
