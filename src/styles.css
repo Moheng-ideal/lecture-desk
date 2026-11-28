@@ -564,7 +564,7 @@ dialog header h2 { font-size: 1.15rem; }
 dialog header button { font-size: 1.4rem; }
 dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .dialog-body { padding: 15px 18px; }
-.settings-fields, .feishu-fields, .dialog-body label { display: grid; gap: 9px; }
+.settings-fields, .feishu-fields, #hermes-fields, .dialog-body label { display: grid; gap: 9px; }
 .teaching-settings { border-top: 1px solid var(--line); padding-top: 8px; }
 .teaching-settings summary { cursor: pointer; padding: 5px 0; font-weight: 600; }
 .teaching-settings label { margin-block: 10px; }
@@ -603,7 +603,7 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .record-answer { padding: 0 8px 10px 0; }
 #record-selection { margin-right: auto; }
 #records footer { flex-wrap: wrap; }
-#credential-status { color: var(--brick); }
+#credential-status, .settings-status { color: var(--brick); }
 .toast { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 9px 14px; color: white; background: #344033; border-radius: 10px; box-shadow: 0 2px 8px #0003; z-index: 4; }
 @media (max-width: 1050px) {
   .tools { gap: 5px; padding-inline: 8px; }
@@ -665,6 +665,7 @@ dialog footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 }
 
 .app-version { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+#app-version { padding: 0; border: 0; font: inherit; color: inherit; touch-action: manipulation; }
 #settings-changelog-content { max-height: 48vh; overflow: auto; padding: 0 4px; }
 #settings-changelog-content h2 { font-size: 1rem; }
 

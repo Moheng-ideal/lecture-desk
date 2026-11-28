@@ -4,6 +4,7 @@ import android.util.Base64;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +25,7 @@ final class DeskNetwork {
     private static final Pattern BLOCKS = Pattern.compile(Pattern.quote(FEISHU) +
         "/docx/v1/documents/[A-Za-z0-9]{1,100}/blocks/[A-Za-z0-9]{1,100}/children\\?client_token=[0-9a-f-]{36}");
     private static final Pattern MULTIPART = Pattern.compile("multipart/form-data; boundary=[A-Za-z0-9-]{1,80}");
+    private static final Pattern HERMES_AUTH = Pattern.compile("Bearer [!-~]{1,1024}");
     private final MainActivity activity;
     private final ExecutorService worker = Executors.newFixedThreadPool(4);
     private final ConcurrentHashMap<String, Call> calls = new ConcurrentHashMap<>();
@@ -41,21 +43,41 @@ final class DeskNetwork {
     DeskNetwork(MainActivity activity) { this.activity = activity; }
 
     boolean start(String id, String url, String body, String auth, String contentType) {
+        return start(id, url, body, auth, contentType, false);
+    }
+
+    boolean startHermes(String id, String url, String body, String auth, String contentType) {
+        return start(id, url, body, auth, contentType, true);
+    }
+
+    private boolean start(String id, String url, String body, String auth, String contentType, boolean hermes) {
         if (id == null || url == null || body == null || auth == null || contentType == null) return false;
-        boolean upload = UPLOAD.equals(url) || MEDIA_UPLOAD.equals(url);
-        boolean allowed = upload ? MULTIPART.matcher(contentType).matches() : isJsonEndpoint(url);
+        boolean upload = !hermes && (UPLOAD.equals(url) || MEDIA_UPLOAD.equals(url));
+        boolean allowed = hermes ? isHermesEndpoint(url) && HERMES_AUTH.matcher(auth).matches() &&
+            "application/json".equals(contentType) : upload ? MULTIPART.matcher(contentType).matches() : isJsonEndpoint(url);
         if (!allowed || body.isEmpty() || body.length() > (upload ? 28_000_000 : 4_000_000) ||
             auth.length() > 5000 || auth.indexOf('\r') >= 0 || auth.indexOf('\n') >= 0 ||
             !ID.matcher(id).matches() || calls.size() >= 6) return false;
         Call call = new Call();
         if (calls.putIfAbsent(id, call) != null) return false;
         try {
-            worker.execute(() -> send(id, url, body, auth, upload ? contentType : "application/json", upload, call));
+            worker.execute(() -> send(id, url, body, auth, upload ? contentType : "application/json", upload, hermes, call));
             return true;
         } catch (RuntimeException rejected) {
             calls.remove(id, call);
             return false;
         }
+    }
+
+    private static boolean isHermesEndpoint(String url) {
+        if (url.length() > 640) return false;
+        try {
+            URI endpoint = URI.create(url);
+            return "https".equals(endpoint.getScheme()) && endpoint.getHost() != null &&
+                endpoint.getRawUserInfo() == null && endpoint.getRawQuery() == null && endpoint.getRawFragment() == null &&
+                endpoint.getPort() != 0 && endpoint.getPort() <= 65535 &&
+                endpoint.getRawPath().endsWith("/v1/chat/completions");
+        } catch (IllegalArgumentException invalid) { return false; }
     }
 
     private static boolean isJsonEndpoint(String url) {
@@ -67,7 +89,7 @@ final class DeskNetwork {
             url.equals(FEISHU + "/docx/v1/documents") || BLOCKS.matcher(url).matches() || IMAGE_BLOCK.matcher(url).matches();
     }
 
-    private void send(String id, String url, String body, String auth, String type, boolean upload, Call call) {
+    private void send(String id, String url, String body, String auth, String type, boolean upload, boolean hermes, Call call) {
         try {
             if (call.cancelled) return;
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
@@ -82,7 +104,7 @@ final class DeskNetwork {
             if (!auth.isEmpty()) {
                 // NK-GeniOS authenticates with the `Apikey` header; the JS bridge
                 // carries the key in the auth slot. DeepSeek/Feishu/Zhipu use Bearer.
-                if (url.startsWith(GENIOS)) connection.setRequestProperty("Apikey", auth);
+                if (!hermes && url.startsWith(GENIOS)) connection.setRequestProperty("Apikey", auth);
                 else connection.setRequestProperty("Authorization", auth);
             }
             byte[] data = upload ? Base64.decode(body, Base64.DEFAULT) : body.getBytes(StandardCharsets.UTF_8);

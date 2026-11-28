@@ -304,6 +304,9 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean startHttp(String id, String url, String body, String auth, String type) {
             return !destroyed && network.start(id, url, body, auth, type);
         }
+        @JavascriptInterface public boolean startHermesHttp(String id, String url, String body, String auth, String type) {
+            return !destroyed && network.startHermes(id, url, body, auth, type);
+        }
         @JavascriptInterface public void cancelHttp(String id) { network.cancel(id); }
 
         @JavascriptInterface public synchronized boolean saveDocument(String id, String name, String data) {

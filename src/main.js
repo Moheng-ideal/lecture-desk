@@ -5,7 +5,8 @@ import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
 import { formatDate, groupRecords, sourceLabel } from './records.js';
-import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
+import { loadDeepSeekKey, loadHermesConnection, rememberDeepSeekKey, rememberHermesConnection } from './credential-store.js';
+import { hermesEndpoint, matchesHermesPin, validHermesKey } from './hermes.js';
 import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers, installToolPressFeedback } from './layout.js';
 import { installPenShortcuts } from './pen-shortcuts.js';
@@ -19,6 +20,7 @@ import { CHAT_BUDGET, MAX_REFERENCES, currentReferences } from './excerpts.js';
 import { bookFormat, formats } from './book-format.js';
 
 const $ = (id) => document.getElementById(id);
+const bailingPinHash = import.meta.env.VITE_HERMES_PIN_HASH;
 const sample = { id: 'sample', title: '函数与图像', sample: true };
 const state = { book: sample, records: [], references: [], exports: [], config: {}, failed: null };
 const drafts = new Map();
@@ -36,17 +38,24 @@ let changingBook;
 let importingBooks = false;
 let exportBusy = false;
 let savedKey;
+let savedHermes = { provider: 'default', hermes: { baseUrl: '', key: '' } };
 let credentialError = '';
+let hermesCredentialError = '';
 let teachingPreferences = { profile: '', mode: 'default', style: '' };
 const preferencesReady = readState('teachingPreferences').then((saved) => {
   if (saved) teachingPreferences = saved;
 }).catch(() => {});
-const credentialsReady = loadDeepSeekKey().then((key) => {
-  savedKey = key;
-  saveConnections({ ...getConnections(), deepseek: key });
-}).catch((error) => {
-  credentialError = error.message;
-});
+const credentialsReady = Promise.all([
+  loadDeepSeekKey().then((key) => {
+    savedKey = key;
+    saveConnections({ ...getConnections(), deepseek: key });
+  }).catch((error) => { credentialError = error.message; }),
+  nativeApp && bailingPinHash && loadHermesConnection().then((connection) => {
+    if (!connection) return;
+    savedHermes = connection;
+    saveConnections({ ...getConnections(), ...connection });
+  }).catch(() => { hermesCredentialError = '本机已保存的白铃连接无法读取，请重新填写。'; }),
+]);
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -212,21 +221,29 @@ function displayThread() {
   scrollToEnd();
 }
 
+function teacherConnection() {
+  const { provider, deepseek, hermes } = getConnections();
+  if (provider === 'hermes') {
+    return { name: '白铃', usingHermes: true, configured: state.config.hermes ||
+      (state.config.canConfigureHermes && Boolean(hermes.baseUrl && hermes.key)) };
+  }
+  return { name: deepseek && !deepseek.startsWith('sk-') ? 'NK-GeniOS' : 'DeepSeek',
+    configured: state.config.deepseek || Boolean(deepseek) };
+}
+
 function syncChat() {
   const busy = Boolean(state.stream);
   $('send').disabled = busy || Boolean(changingBook);
   $('stop').hidden = !busy;
   $('teach-page').disabled = busy || !reader?.rendered || Boolean(changingBook);
   $('teach-next').disabled = $('teach-page').disabled || reader.page >= reader.documentSource.numPages;
-  const providerKey = getConnections().deepseek || '';
-  const provider = providerKey.startsWith('sk-') ? 'DeepSeek' : providerKey ? 'NK-GeniOS' : 'DeepSeek';
+  const { name, configured, usingHermes } = teacherConnection();
   const hasVision = state.config.vision || getConnections().vision;
-  $('connection-state').textContent = state.config.unavailable ? `${provider} · 服务不可用` :
-    state.config.requiresCode && !state.config.authorized ? `${provider} · 请输入访问口令` :
-      (state.config.deepseek || providerKey) && hasVision ?
-        `${provider} + 视觉模型 · 已配置` :
-        (state.config.deepseek || providerKey) ? `${provider} · 已配置（未配视觉模型）` :
-          'DeepSeek · 待配置';
+  const info = state.config.unavailable ? '服务不可用' :
+    state.config.requiresCode && !state.config.authorized ? '请输入访问口令' :
+      !configured ? '待配置' : usingHermes || hasVision ? '已配置' : '已配置（未配视觉模型）';
+  const label = !usingHermes && configured && hasVision ? `${name} + 视觉模型` : name;
+  $('connection-state').textContent = `${label} · ${info}`;
 }
 
 async function refreshConfiguration() {
@@ -379,14 +396,15 @@ $('book-ai-title').onclick = async () => {
   try {
     await credentialsReady;
     controller.signal.throwIfAborted();
-    if (!state.config.deepseek && !getConnections().deepseek) {
-      throw new Error('请先在设置中配置 DeepSeek API Key。');
+    const teacher = teacherConnection();
+    if (!teacher.configured) {
+      throw new Error(`请先在设置中配置 ${teacher.name}。`);
     }
     if (changingBook) throw new Error('请等课本打开后再点「AI 总结命名」。');
     if (state.book.id !== edit.book.id && !await activateBook(edit.book)) throw new Error('无法打开课本。');
     controller.signal.throwIfAborted();
     if (!reader.documentSource) throw new Error('请先打开课本。');
-    status('book-rename-status', 'DeepSeek 正在阅读课本页面并建议名称…');
+    status('book-rename-status', `${teacher.name} 正在阅读课本页面并建议名称…`);
     const count = reader.documentSource.numPages;
     const pages = [...new Set([1, reader.page > 1 ? reader.page : Math.min(2, count)])];
     const captures = [];
@@ -522,12 +540,12 @@ async function openSettings(section) {
   await Promise.all([credentialsReady, preferencesReady, fingerInkReady]);
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
-  $('credential-fields').hidden = !state.config.canSupplyCredentials;
+  $('credential-fields').hidden = $('vision-field').hidden = !state.config.canSupplyCredentials;
   $('feishu-fields').hidden = !state.config.canSupplyCredentials;
   $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
   $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
   $('configuration-hint').textContent = nativeApp ?
-    'DeepSeek API Key 加密保存在本机，重启后自动读取。清空密钥并应用设置即可移除。飞书凭据在本次打开期间使用。' :
+    '讲解师密钥加密保存在本机，重启后自动读取。清空密钥并应用设置即可移除。飞书凭据在本次打开期间使用。' :
     state.config.canSupplyCredentials ?
       'DeepSeek API Key 加密保存在当前浏览器。清空密钥并应用设置即可移除。飞书凭据和访问口令在本次会话期间使用。' :
       '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
@@ -548,6 +566,100 @@ async function openSettings(section) {
     $('feishu-guide').open = true;
   }
   if (!$('settings').open) $('settings').showModal();
+}
+
+let versionClicks = 0;
+let versionClickTimeout;
+let bailingAttempt = 0;
+let bailingPin = '';
+
+function resetVersionClicks() {
+  clearTimeout(versionClickTimeout);
+  versionClicks = 0;
+}
+
+function showSettingsView(view) {
+  for (const id of ['settings-form', 'bailing-unlock', 'bailing-connection']) $(id).hidden = id !== view;
+  $('settings').setAttribute('aria-labelledby', `${view}-title`);
+  $('settings').scrollTop = 0;
+}
+
+function returnToSettings() {
+  resetVersionClicks();
+  bailingAttempt++;
+  bailingPin = '';
+  $('bailing-unlock').reset();
+  $('bailing-connection').reset();
+  showSettingsView('settings-form');
+  if ($('settings').open) $('app-version').focus();
+}
+
+function clickVersion() {
+  if (!bailingPinHash || !(state.config.canConfigureHermes || state.config.hermes)) return;
+  clearTimeout(versionClickTimeout);
+  if (++versionClicks < 5) {
+    versionClickTimeout = setTimeout(resetVersionClicks, 1200);
+    return;
+  }
+  resetVersionClicks();
+  status('bailing-unlock-status');
+  showSettingsView('bailing-unlock');
+  $('bailing-pin').focus();
+}
+
+async function unlockBailing(event) {
+  event.preventDefault();
+  const attempt = ++bailingAttempt;
+  const pin = $('bailing-pin').value;
+  const valid = await matchesHermesPin(pin, bailingPinHash).catch(() => false);
+  if (attempt !== bailingAttempt || !$('settings').open || $('bailing-unlock').hidden) return;
+  $('bailing-pin').value = '';
+  if (!valid) {
+    status('bailing-unlock-status', '密码不正确，请重试。');
+    $('bailing-pin').focus();
+    return;
+  }
+  const { provider, hermes } = getConnections();
+  if (!nativeApp) bailingPin = pin;
+  $('bailing-enabled').checked = provider === 'hermes';
+  $('hermes-fields').hidden = !state.config.canConfigureHermes;
+  $('hermes-url').value = hermes.baseUrl;
+  $('hermes-key').value = hermes.key;
+  status('bailing-connection-status', hermesCredentialError);
+  showSettingsView('bailing-connection');
+  $('bailing-enabled').focus();
+}
+
+async function saveBailing(event) {
+  event.preventDefault();
+  if ($('bailing-connection').hidden) return;
+  const useHermes = $('bailing-enabled').checked;
+  const provider = useHermes ? 'hermes' : 'default';
+  const hermes = { baseUrl: $('hermes-url').value.trim(), key: $('hermes-key').value.trim() };
+  if (state.config.canConfigureHermes && (
+    ((useHermes || hermes.baseUrl) && !hermesEndpoint(hermes.baseUrl)) ||
+    ((useHermes || hermes.key) && !validHermesKey(hermes.key))
+  )) {
+    status('bailing-connection-status', '请填写白铃的 HTTPS 服务地址和有效的 API 密钥。');
+    return;
+  }
+  const hermesPin = useHermes && !nativeApp ? bailingPin : '';
+  const submit = $('bailing-connection').querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    if (state.config.canConfigureHermes && (provider !== savedHermes.provider ||
+      hermes.baseUrl !== savedHermes.hermes.baseUrl || hermes.key !== savedHermes.hermes.key)) {
+      try {
+        await rememberHermesConnection({ provider, hermes });
+        savedHermes = { provider, hermes };
+        hermesCredentialError = '';
+      } catch { hermesCredentialError = '白铃连接无法保存到本机，本次打开期间仍可使用。'; }
+    }
+    saveConnections({ ...getConnections(), provider, hermes, hermesPin });
+    if ($('settings').open && !$('bailing-connection').hidden) $('settings').close();
+    syncChat();
+    feedback(hermesCredentialError || '白铃连接设置已保存。');
+  } finally { submit.disabled = false; }
 }
 
 function precedingTurns(question, references, preferences) {
@@ -576,11 +688,12 @@ async function ask(question, references = state.references, { preserveDraft = fa
     return;
   }
   showPanel('chat');
-  if (!state.config.deepseek && !getConnections().deepseek) {
+  const teacher = teacherConnection();
+  if (!teacher.configured) {
     $('question').value = question;
     state.references = [...references];
     displayExcerpts();
-    status('chat-status', '请先在设置中配置 DeepSeek。');
+    status('chat-status', `请先在设置中配置 ${teacher.name}。`);
     openSettings();
     return;
   }
@@ -858,6 +971,12 @@ $('finger-ink').onchange = (event) => {
   saveState('fingerInk', reader.fingerInk).catch(() => feedback('手指书写设置仅在本次打开期间生效。'));
 };
 $('app-version').textContent = '当前版本 v' + version;
+$('app-version').onclick = clickVersion;
+$('settings').addEventListener('click', (event) => { if (event.target !== $('app-version')) resetVersionClicks(); });
+$('settings').addEventListener('close', returnToSettings);
+$('bailing-unlock-back').onclick = $('bailing-connection-back').onclick = returnToSettings;
+$('bailing-unlock').onsubmit = unlockBailing;
+$('bailing-connection').onsubmit = saveBailing;
 $('settings-changelog').addEventListener('toggle', () => {
   const section = $('settings-changelog-content');
   if ($('settings-changelog').open && !section.hasChildNodes()) {
@@ -982,25 +1101,25 @@ $('settings-form').onsubmit = async (event) => {
     return;
   }
   const deepseek = trim('deepseek-key');
-  if (deepseek !== savedKey) {
-    const submit = event.submitter;
-    if (submit) submit.disabled = true;
-    try {
-      await rememberDeepSeekKey(deepseek);
-      savedKey = deepseek;
-      credentialError = '';
-    } catch {
-      credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。';
-    } finally { if (submit) submit.disabled = false; }
-  }
-  saveConnections({ access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu });
-  teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
-    style: trim('teacher-style') };
-  const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
-  $('settings').close();
-  await refreshConfiguration();
-  feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
-    credentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
+  const submit = event.submitter;
+  if (submit) submit.disabled = true;
+  try {
+    if (deepseek !== savedKey) {
+      try {
+        await rememberDeepSeekKey(deepseek);
+        savedKey = deepseek;
+        credentialError = '';
+      } catch { credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。'; }
+    }
+    saveConnections({ ...getConnections(), access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu });
+    teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
+      style: trim('teacher-style') };
+    const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
+    $('settings').close();
+    await refreshConfiguration();
+    feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
+      credentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
+  } finally { if (submit) submit.disabled = false; }
 };
 $('records-open').onclick = openRecords;
 $('record-list').onchange = resetExportDisplay;

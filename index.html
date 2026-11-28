@@ -280,9 +280,9 @@
     <footer><button type="button" id="library-import" class="accent">导入课件</button></footer>
   </dialog>
 
-  <dialog id="settings">
-    <header><h2>设置</h2><button type="button" data-close aria-label="关闭">×</button></header>
+  <dialog id="settings" aria-labelledby="settings-form-title">
     <form id="settings-form" autocomplete="off">
+      <header><h2 id="settings-form-title">设置</h2><button type="button" data-close aria-label="关闭">×</button></header>
       <div class="dialog-body settings-fields">
         <fieldset id="theme-options" class="theme-options">
           <legend>界面主题</legend>
@@ -291,7 +291,7 @@
           <label><input type="radio" name="desk-theme" value="night"><span>深蓝灰</span></label>
         </fieldset>
         <div class="app-version">
-          <span id="app-version"></span>
+          <button type="button" id="app-version"></button>
           <button type="button" id="check-update" class="outline" hidden>检查更新</button>
         </div>
         <details id="settings-changelog" class="teaching-settings">
@@ -319,7 +319,7 @@
             <option value="custom">自定义提示词</option>
           </select></label>
           <label id="teacher-style-field" hidden>自定义回复风格<textarea id="teacher-style" rows="3" maxlength="4000" placeholder="例如：像耐心的助教一样说话，多用类比，给出关键公式和一个例题。"></textarea></label>
-          <p>设置保留在本机。提问时，使用中的画像和风格会随问题发给 DeepSeek。</p>
+          <p>设置保留在本机。提问时，使用中的画像和风格会随问题发给当前讲解师。</p>
         </details>
         <details id="feishu-settings" class="feishu-settings">
           <summary>飞书云文档</summary>
@@ -343,6 +343,26 @@
         <label class="checkbox"><input id="finger-ink" type="checkbox">允许手指书写（课本和白板，双指仍可缩放）</label>
       </div>
       <footer><button type="submit" class="accent">应用设置</button></footer>
+    </form>
+    <form id="bailing-unlock" autocomplete="off" hidden>
+      <header><h2 id="bailing-unlock-title">输入密码</h2><button type="button" data-close aria-label="关闭">×</button></header>
+      <div class="dialog-body settings-fields">
+        <label>密码<input id="bailing-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" required></label>
+        <p id="bailing-unlock-status" class="settings-status" role="status" hidden></p>
+      </div>
+      <footer><button type="button" id="bailing-unlock-back" class="quiet">返回</button><button type="submit" class="accent">确认</button></footer>
+    </form>
+    <form id="bailing-connection" autocomplete="off" hidden>
+      <header><h2 id="bailing-connection-title">白铃连接</h2><button type="button" data-close aria-label="关闭">×</button></header>
+      <div class="dialog-body settings-fields">
+        <label class="checkbox"><input id="bailing-enabled" type="checkbox">使用白铃作为讲解师</label>
+        <div id="hermes-fields">
+          <label>Hermes 服务地址<input id="hermes-url" type="url" maxlength="600" placeholder="https://hermes.example.com/v1"></label>
+          <label>Hermes API 密钥<input id="hermes-key" type="password" maxlength="1024" autocomplete="off"></label>
+        </div>
+        <p id="bailing-connection-status" class="settings-status" role="status" hidden></p>
+      </div>
+      <footer><button type="button" id="bailing-connection-back" class="quiet">返回</button><button type="submit" class="accent">保存连接</button></footer>
     </form>
   </dialog>
 

@@ -75,6 +75,40 @@ test('stopping a Harmony request cancels the original native request', async () 
   assert.equal(cancelled, started);
 });
 
+test('the Android Hermes connection uses its own native route and reports invalid credentials', async () => {
+  let status = 200;
+  window.LectureDeskNative = {
+    startHttp() { assert.fail('Hermes must use the dedicated bridge method'); },
+    startHermesHttp(id, url, body, authorization, type) {
+      assert.equal(url, 'https://hermes.example/p/teacher/v1/chat/completions');
+      assert.equal(authorization, 'Bearer fixture-hermes');
+      assert.equal(type, 'application/json');
+      assert.equal(JSON.parse(body).messages.at(-1).content, '怎么理解？');
+      queueMicrotask(() => {
+        sendEvent(id, 'headers', JSON.stringify({ 'Content-Type': status === 200 ? 'text/event-stream' : 'application/json' }));
+        sendEvent(id, 'status', String(status));
+        if (status === 200) sendEvent(id, 'data', Buffer.from('data: [DONE]\n\n').toString('base64'));
+        sendEvent(id, 'end');
+      });
+      return true;
+    },
+    cancelHttp() {},
+  };
+  const config = await requestFromHarmony('/api/config');
+  assert.equal((await config.json()).canConfigureHermes, true);
+  const input = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+    question: '怎么理解？', references: [], history: [], provider: 'hermes',
+    credentials: { hermes: { baseUrl: 'https://hermes.example/p/teacher/v1', key: 'fixture-hermes' } },
+  }) };
+  const response = await requestFromHarmony('/api/chat', input);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /\[DONE\]/);
+  status = 401;
+  const rejected = await requestFromHarmony('/api/chat', input);
+  assert.equal(rejected.status, 502);
+  assert.match((await rejected.json()).error, /Hermes 访问密钥验证失败/);
+});
+
 test('PDF upload passes a multipart file and folder token through the Harmony network bridge', async () => {
   globalThis.FileReader = class {
     async readAsDataURL(blob) {
