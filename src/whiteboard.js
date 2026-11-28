@@ -33,13 +33,14 @@ export function installWhiteboard({ notify, allowFingerInk }) {
   const canvas = id('board-ink');
   const overlay = id('board-draft');
   const undo = id('board-undo');
+  const redo = id('board-redo');
   const clear = id('board-clear');
   const zoomIn = id('board-zoom-in');
   const zoomOut = id('board-zoom-out');
   const zoomReset = id('board-zoom-reset');
   const toolbar = id('board-tools');
   const modes = toolbar.querySelectorAll('[data-board-tool]');
-  const history = [];
+  const history = { undo: [], redo: [] };
   const contacts = new Map();
   const strokeBounds = new WeakMap();
   let ink = [];
@@ -155,7 +156,8 @@ export function installWhiteboard({ notify, allowFingerInk }) {
   }
 
   function refresh() {
-    undo.disabled = !history.length;
+    undo.disabled = !history.undo.length;
+    redo.disabled = !history.redo.length;
     clear.disabled = !ink.length;
     schedulePaint(true);
   }
@@ -172,8 +174,9 @@ export function installWhiteboard({ notify, allowFingerInk }) {
   }
 
   function remember(previous) {
-    history.push(previous);
-    if (history.length > 50) history.shift();
+    history.undo.push(previous);
+    if (history.undo.length > 50) history.undo.shift();
+    history.redo.length = 0;
     persist();
   }
 
@@ -258,14 +261,17 @@ export function installWhiteboard({ notify, allowFingerInk }) {
     for (const button of modes) button.setAttribute('aria-pressed', String(button.dataset.boardTool === tool));
     tools.sync();
   }
-  for (const button of modes) button.onclick = () => tools.select(button.dataset.boardTool);
-  undo.onclick = () => {
+  for (const button of modes) button.onclick = (event) => tools.select(button.dataset.boardTool, event);
+  function travelHistory(from, to) {
     endAction(true);
-    if (!history.length) return;
-    ink = history.pop();
+    if (!history[from].length) return;
+    history[to].push(ink);
+    ink = history[from].pop();
     persist();
     refresh();
-  };
+  }
+  undo.onclick = () => travelHistory('undo', 'redo');
+  redo.onclick = () => travelHistory('redo', 'undo');
   function clearInk() {
     endAction(true);
     if (!ink.length) return;

@@ -46,15 +46,15 @@
           <div class="tool-group" id="modes" aria-label="批注和选取">
             <button type="button" data-tool="read" aria-pressed="true" title="阅读和滚动">阅读</button>
             <button type="button" data-tool="select" aria-pressed="false" title="拖动框选截图">选文</button>
-            <button type="button" data-tool="pen" aria-pressed="false" title="圆珠笔">批注笔</button>
-            <button type="button" data-tool="marker" aria-pressed="false" title="荧光笔">荧光笔</button>
-            <button type="button" data-tool="eraser" aria-pressed="false">橡皮</button>
+            <button type="button" data-tool="pen" aria-pressed="false" title="双击打开批注笔设置">批注笔</button>
+            <button type="button" data-tool="marker" aria-pressed="false" title="双击打开荧光笔设置">荧光笔</button>
+            <button type="button" data-tool="eraser" aria-pressed="false" title="双击打开橡皮设置">橡皮</button>
           </div>
           <button type="button" id="ink-config" class="quiet" aria-controls="ink-panel" aria-expanded="false">笔刷设置</button>
-          <div class="tool-group history-tools">
-            <button type="button" id="undo" title="撤销批注" aria-label="撤销批注" disabled>↶</button>
-            <button type="button" id="redo" title="重做批注" aria-label="重做批注" disabled>↷</button>
-          </div>
+        </div>
+        <div class="history-tools">
+          <button type="button" id="undo" class="outline" title="撤销批注" aria-label="撤销批注" disabled>↶</button>
+          <button type="button" id="redo" class="outline" title="复原批注" aria-label="复原批注" disabled>↷</button>
         </div>
         <button type="button" id="book-fullscreen" aria-pressed="false" class="quiet" title="展开左侧课本">全屏</button>
         <template id="ink-panel-template">
@@ -93,6 +93,7 @@
 
       <div class="selection-bar" id="selection-bar" hidden>
         <span id="selection-note">拖动框选课本区域，可以连续添加多张截图。</span>
+        <button type="button" id="exit-selection" class="outline">退出选文</button>
         <button type="button" id="use-selection" class="accent">添加截图</button>
       </div>
 
@@ -183,13 +184,16 @@
       </header>
       <div class="board-tool-area">
         <div class="board-tools" id="board-tools" aria-label="白板工具">
-          <button type="button" data-board-tool="pen" aria-pressed="true" title="触控笔写字，手指拖动画布">笔</button>
-          <button type="button" data-board-tool="marker" aria-pressed="false">荧光笔</button>
-          <button type="button" data-board-tool="eraser" aria-pressed="false" title="触控笔擦除，手指拖动画布">橡皮</button>
+          <button type="button" data-board-tool="pen" aria-pressed="true" title="双击打开画笔设置">笔</button>
+          <button type="button" data-board-tool="marker" aria-pressed="false" title="双击打开荧光笔设置">荧光笔</button>
+          <button type="button" data-board-tool="eraser" aria-pressed="false" title="双击打开橡皮设置">橡皮</button>
           <button type="button" data-board-tool="pan" aria-pressed="false">移动</button>
           <button type="button" id="board-ink-config" class="quiet" aria-controls="board-ink-panel" aria-expanded="false" aria-label="白板笔刷设置">笔刷设置</button>
-          <button type="button" id="board-undo" aria-label="撤销白板笔划" title="撤销" disabled>↶</button>
           <button type="button" id="board-clear" class="quiet" disabled>清空</button>
+        </div>
+        <div class="history-tools">
+          <button type="button" id="board-undo" class="outline" title="撤销白板笔迹" aria-label="撤销白板笔迹" disabled>↶</button>
+          <button type="button" id="board-redo" class="outline" title="复原白板笔迹" aria-label="复原白板笔迹" disabled>↷</button>
         </div>
       </div>
       <div id="board-surface">
@@ -215,9 +219,9 @@
       <div class="board-tool-area">
         <div class="board-tools" id="note-tools" aria-label="笔记工具">
           <button type="button" data-note-tool="select" aria-pressed="false" aria-label="选择"><svg class="note-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3l14.5 7.6-6.5 1.5 3.4 6.2-2.7 1.5-3.4-6.2L5 19.6z" fill="currentColor"/></svg></button>
-          <button type="button" data-note-tool="pen" aria-pressed="true" title="触控笔或手指书写">笔</button>
-          <button type="button" data-note-tool="marker" aria-pressed="false">荧光笔</button>
-          <button type="button" data-note-tool="eraser" aria-pressed="false">橡皮</button>
+          <button type="button" data-note-tool="pen" aria-pressed="true" title="双击打开画笔设置">笔</button>
+          <button type="button" data-note-tool="marker" aria-pressed="false" title="双击打开荧光笔设置">荧光笔</button>
+          <button type="button" data-note-tool="eraser" aria-pressed="false" title="双击打开橡皮设置">橡皮</button>
           <button type="button" id="note-insert-text" class="quiet">文字</button>
           <button type="button" id="note-insert-image" class="quiet">插入截图</button>
           <button type="button" id="note-insert-quote" class="quiet">插入摘录</button>

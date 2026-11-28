@@ -45,3 +45,28 @@ export function installDividers() {
     property: '--book-width', key: 'bookWidth', initial: 61, min: 35, max: 75,
   });
 }
+
+export function installToolPressFeedback() {
+  const buttons = ':is(.header-actions, .mobile-tabs, .tools, .board-tools, .history-tools, .selection-bar) button';
+  let pressed;
+  let pointerId;
+  const release = () => {
+    pressed?.removeAttribute('data-pressing');
+    pressed = null;
+  };
+  document.addEventListener('pointerdown', (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    release();
+    const button = event.target.closest(buttons);
+    if (!button || button.disabled) return;
+    pressed = button;
+    pointerId = event.pointerId;
+    button.dataset.pressing = '';
+  }, true);
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    document.addEventListener(type, (event) => {
+      if (event.pointerId === pointerId) release();
+    }, true);
+  }
+  window.addEventListener('blur', release);
+}

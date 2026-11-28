@@ -3,6 +3,7 @@ import { readState, saveState } from './storage.js';
 
 const byId = (id) => document.getElementById(id);
 const isInkTool = (tool) => ['pen', 'marker', 'eraser'].includes(tool);
+const doubleTapWindow = 350;
 const colors = [
   ['炭黑', '#242622'], ['朱红', '#ba472d'], ['金黄', '#dfad2e'],
   ['松绿', '#3b6850'], ['钴蓝', '#366b9a'], ['紫色', '#84568b'],
@@ -67,6 +68,7 @@ export class InkTools {
       };
     }
     this.button.onclick = () => {
+      this.lastToolTap = null;
       if (!isInkTool(this.target.tool)) this.target.setTool('pen');
       this.toggle(this.panel.hidden);
     };
@@ -74,6 +76,7 @@ export class InkTools {
     this.get('erase-page').onclick = clear;
     if (clearLabel) this.get('erase-page').textContent = clearLabel;
     document.addEventListener('pointerdown', ({ target }) => {
+      if (!modes.contains(target)) this.lastToolTap = null;
       if (!this.panel.hidden && !this.panel.contains(target) && !modes.contains(target) && !this.button.contains(target)) this.toggle(false);
     });
     document.addEventListener('keydown', ({ key }) => { if (key === 'Escape') this.toggle(false); });
@@ -91,10 +94,14 @@ export class InkTools {
   get type() { return this.target.tool === 'marker' ? 'marker' : this.brush; }
   get pen() { return this.pens[this.type]; }
 
-  select(tool) {
-    const open = this.panel.hidden || tool !== this.target.tool;
-    this.target.setTool(tool);
-    this.toggle(open && isInkTool(tool));
+  select(tool, { timeStamp }) {
+    const hasSettings = isInkTool(tool);
+    const last = this.lastToolTap;
+    const doubleTap = hasSettings && tool === this.target.tool && last?.tool === tool &&
+      timeStamp - last.timeStamp <= doubleTapWindow;
+    this.lastToolTap = hasSettings && !doubleTap ? { tool, timeStamp } : null;
+    if (!hasSettings || tool !== this.target.tool) this.target.setTool(tool);
+    this.toggle(doubleTap);
   }
 
   update(target, key, value) {
