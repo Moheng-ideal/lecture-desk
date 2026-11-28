@@ -8,7 +8,7 @@
 
 ## 下载安装
 
-**讲课台 v0.8.6（Android APK）** · [服务器下载](http://8.141.106.190/lecture-desk/lecture-desk-android-0.8.6.apk) · [GitHub 下载](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.8.6-android/lecture-desk-android-0.8.6.apk) · [更新日志](CHANGELOG.md)
+**讲课台 v0.8.6（Android APK）** · [服务器下载](http://8.141.106.190/lecture-desk/lecture-desk-android-0.8.6.apk) · [GitHub 下载](https://github.com/Moheng-ideal/lecture-desk/releases/download/v0.8.6-android/lecture-desk-android-0.8.6.apk) · [更新日志](docs/CHANGELOG.md)
 
 - Android 平板下载 APK 后，打开文件并按系统提示安装。
 - HarmonyOS 5.0 及以上的华为平板，可在支持的机型上通过「卓易通」打开 APK 并尝试安装，兼容性以设备实测为准。开发者也可以参考[鸿蒙工程及真机签名说明](harmony/README.md)。

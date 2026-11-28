@@ -1,6 +1,6 @@
 import './styles.css';
 import { version } from '../package.json';
-import changelog from '../CHANGELOG.md?raw';
+import changelog from '../docs/CHANGELOG.md?raw';
 import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
