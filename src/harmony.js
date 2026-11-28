@@ -58,7 +58,7 @@ document.addEventListener('click', (event) => {
   bridge().then((native) => native.openLink(link.href)).catch(() => {});
 });
 
-async function fetchFromHarmony(url, { headers, body, signal }) {
+async function fetchFromHarmony(url, { headers, body, signal }, method = 'startHttp') {
   const native = await bridge();
   const requestHeaders = new Headers(headers);
   if (body instanceof FormData) {
@@ -124,7 +124,7 @@ async function fetchFromHarmony(url, { headers, body, signal }) {
     });
     signal?.addEventListener('abort', abort, { once: true });
     try {
-      if (!native.startHttp(id, url, body, requestHeaders.get('authorization') || '', requestHeaders.get('content-type') || 'application/json')) {
+      if (!native[method](id, url, body, requestHeaders.get('authorization') || '', requestHeaders.get('content-type') || 'application/json')) {
         stop(new Error('应用无法处理该请求。'));
       }
     } catch (error) { stop(error); }
@@ -133,7 +133,10 @@ async function fetchFromHarmony(url, { headers, body, signal }) {
 
 export async function requestFromHarmony(path, options = {}) {
   const url = new URL(path, location.origin);
-  const result = await handleApi(new Request(url, options), {}, { localApp: true, fetcher: fetchFromHarmony });
+  const native = await bridge();
+  const hermesFetcher = typeof native.startHermesHttp === 'function' ?
+    (endpoint, init) => fetchFromHarmony(endpoint, init, 'startHermesHttp') : undefined;
+  const result = await handleApi(new Request(url, options), {}, { localApp: true, fetcher: fetchFromHarmony, hermesFetcher });
   if (options.signal?.aborted) throw options.signal.reason;
   return result;
 }

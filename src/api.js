@@ -1,6 +1,6 @@
 import { nativeApp } from './platform.js';
 
-let settings = { access: '', deepseek: '', vision: '', feishu: {} };
+let settings = { access: '', provider: 'default', deepseek: '', vision: '', hermes: { baseUrl: '', key: '' }, feishu: {} };
 
 async function appRequest(path, options) {
   if (nativeApp) {
@@ -45,15 +45,18 @@ async function post(path, data, credentials, signal) {
 }
 
 export function streamAnswer(data, onText, signal) {
-  return streamDeepSeek('chat', data, onText, signal);
+  return streamTeaching('chat', data, onText, signal);
 }
 
 export function suggestBookTitle(references, signal) {
-  return streamDeepSeek('book-title', { references }, () => {}, signal);
+  return streamTeaching('book-title', { references }, () => {}, signal);
 }
 
-async function streamDeepSeek(path, data, onText, signal) {
-  const response = await post(path, data, { deepseek: settings.deepseek, vision: settings.vision }, signal);
+async function streamTeaching(path, data, onText, signal) {
+  const useHermes = settings.provider === 'hermes';
+  const credentials = useHermes ? (nativeApp ? { hermes: settings.hermes } : undefined) :
+    { deepseek: settings.deepseek, vision: settings.vision };
+  const response = await post(path, useHermes ? { ...data, provider: 'hermes' } : data, credentials, signal);
   if (!response.headers.get('content-type')?.includes('text/event-stream') || !response.body) {
     throw new Error('讲解服务没有返回有效的流式回答。');
   }
@@ -95,7 +98,7 @@ async function streamDeepSeek(path, data, onText, signal) {
     throw new Error('讲解未完整返回，可以重试。');
   }
   if (!text.trim()) throw new Error('讲解服务没有返回内容。');
-  if (reason === 'length') text += '\n\n（DeepSeek 已达到单次输出上限，可以继续追问。）';
+  if (reason === 'length') text += '\n\n（已达到单次输出上限，可以继续追问。）';
   return text;
 }
 

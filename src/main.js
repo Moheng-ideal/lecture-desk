@@ -5,7 +5,8 @@ import { Reader } from './reader.js';
 import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRecord, saveState } from './storage.js';
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
 import { formatDate, groupRecords, sourceLabel } from './records.js';
-import { loadDeepSeekKey, rememberDeepSeekKey } from './credential-store.js';
+import { loadDeepSeekKey, loadHermesConnection, rememberDeepSeekKey, rememberHermesConnection } from './credential-store.js';
+import { hermesEndpoint, validHermesKey } from './hermes.js';
 import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers, installToolPressFeedback } from './layout.js';
 import { installPenShortcuts } from './pen-shortcuts.js';
@@ -36,17 +37,24 @@ let changingBook;
 let importingBooks = false;
 let exportBusy = false;
 let savedKey;
+let savedHermes = { provider: 'default', hermes: { baseUrl: '', key: '' } };
 let credentialError = '';
+let hermesCredentialError = '';
 let teachingPreferences = { profile: '', mode: 'default', style: '' };
 const preferencesReady = readState('teachingPreferences').then((saved) => {
   if (saved) teachingPreferences = saved;
 }).catch(() => {});
-const credentialsReady = loadDeepSeekKey().then((key) => {
-  savedKey = key;
-  saveConnections({ ...getConnections(), deepseek: key });
-}).catch((error) => {
-  credentialError = error.message;
-});
+const credentialsReady = Promise.all([
+  loadDeepSeekKey().then((key) => {
+    savedKey = key;
+    saveConnections({ ...getConnections(), deepseek: key });
+  }).catch((error) => { credentialError = error.message; }),
+  loadHermesConnection().then((connection) => {
+    if (!connection) return;
+    savedHermes = connection;
+    saveConnections({ ...getConnections(), ...connection });
+  }).catch(() => { hermesCredentialError = '本机已保存的 Hermes 设置无法读取，请重新填写。'; }),
+]);
 
 function element(tag, text, className) {
   const node = document.createElement(tag);
@@ -212,21 +220,29 @@ function displayThread() {
   scrollToEnd();
 }
 
+function teacherConnection() {
+  const { provider, deepseek, hermes } = getConnections();
+  if (provider === 'hermes') {
+    return { name: 'Hermes', configured: state.config.hermes ||
+      (state.config.canConfigureHermes && Boolean(hermes.baseUrl && hermes.key)) };
+  }
+  return { name: deepseek && !deepseek.startsWith('sk-') ? 'NK-GeniOS' : 'DeepSeek',
+    configured: state.config.deepseek || Boolean(deepseek) };
+}
+
 function syncChat() {
   const busy = Boolean(state.stream);
   $('send').disabled = busy || Boolean(changingBook);
   $('stop').hidden = !busy;
   $('teach-page').disabled = busy || !reader?.rendered || Boolean(changingBook);
   $('teach-next').disabled = $('teach-page').disabled || reader.page >= reader.documentSource.numPages;
-  const providerKey = getConnections().deepseek || '';
-  const provider = providerKey.startsWith('sk-') ? 'DeepSeek' : providerKey ? 'NK-GeniOS' : 'DeepSeek';
+  const { name, configured } = teacherConnection();
   const hasVision = state.config.vision || getConnections().vision;
-  $('connection-state').textContent = state.config.unavailable ? `${provider} · 服务不可用` :
-    state.config.requiresCode && !state.config.authorized ? `${provider} · 请输入访问口令` :
-      (state.config.deepseek || providerKey) && hasVision ?
-        `${provider} + 视觉模型 · 已配置` :
-        (state.config.deepseek || providerKey) ? `${provider} · 已配置（未配视觉模型）` :
-          'DeepSeek · 待配置';
+  const info = state.config.unavailable ? '服务不可用' :
+    state.config.requiresCode && !state.config.authorized ? '请输入访问口令' :
+      !configured ? '待配置' : name === 'Hermes' || hasVision ? '已配置' : '已配置（未配视觉模型）';
+  const label = name !== 'Hermes' && configured && hasVision ? `${name} + 视觉模型` : name;
+  $('connection-state').textContent = `${label} · ${info}`;
 }
 
 async function refreshConfiguration() {
@@ -379,14 +395,15 @@ $('book-ai-title').onclick = async () => {
   try {
     await credentialsReady;
     controller.signal.throwIfAborted();
-    if (!state.config.deepseek && !getConnections().deepseek) {
-      throw new Error('请先在设置中配置 DeepSeek API Key。');
+    const teacher = teacherConnection();
+    if (!teacher.configured) {
+      throw new Error(`请先在设置中配置 ${teacher.name}。`);
     }
     if (changingBook) throw new Error('请等课本打开后再点「AI 总结命名」。');
     if (state.book.id !== edit.book.id && !await activateBook(edit.book)) throw new Error('无法打开课本。');
     controller.signal.throwIfAborted();
     if (!reader.documentSource) throw new Error('请先打开课本。');
-    status('book-rename-status', 'DeepSeek 正在阅读课本页面并建议名称…');
+    status('book-rename-status', `${teacher.name} 正在阅读课本页面并建议名称…`);
     const count = reader.documentSource.numPages;
     const pages = [...new Set([1, reader.page > 1 ? reader.page : Math.min(2, count)])];
     const captures = [];
@@ -518,23 +535,35 @@ async function openLibrary() {
   if (!$('library').open) $('library').showModal();
 }
 
+function syncTeacherSettings() {
+  const useHermes = $('teaching-provider').value === 'hermes';
+  const localHermes = useHermes && state.config.canConfigureHermes;
+  $('hermes-fields').hidden = !localHermes;
+  $('hermes-url').disabled = $('hermes-key').disabled = !localHermes;
+  $('credential-fields').hidden = $('vision-field').hidden = useHermes || !state.config.canSupplyCredentials;
+}
+
 async function openSettings(section) {
   await Promise.all([credentialsReady, preferencesReady, fingerInkReady]);
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
-  $('credential-fields').hidden = !state.config.canSupplyCredentials;
+  $('teaching-provider-field').hidden = !(state.config.canConfigureHermes || state.config.hermes || settings.provider === 'hermes');
+  $('teaching-provider').value = settings.provider;
+  $('hermes-url').value = settings.hermes.baseUrl;
+  $('hermes-key').value = settings.hermes.key;
+  syncTeacherSettings();
   $('feishu-fields').hidden = !state.config.canSupplyCredentials;
   $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
   $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
   $('configuration-hint').textContent = nativeApp ?
-    'DeepSeek API Key 加密保存在本机，重启后自动读取。清空密钥并应用设置即可移除。飞书凭据在本次打开期间使用。' :
+    '讲解师密钥加密保存在本机，重启后自动读取。清空密钥并应用设置即可移除。飞书凭据在本次打开期间使用。' :
     state.config.canSupplyCredentials ?
       'DeepSeek API Key 加密保存在当前浏览器。清空密钥并应用设置即可移除。飞书凭据和访问口令在本次会话期间使用。' :
       '局域网 HTTP 由电脑端的 .env 提供 API 凭据。平板上的课本和批注保存在平板。';
   $('access-code').value = settings.access;
   $('deepseek-key').value = settings.deepseek;
   $('vision-key').value = settings.vision || '';
-  status('credential-status', credentialError);
+  status('credential-status', credentialError || hermesCredentialError);
   $('feishu-id').value = settings.feishu.appId || '';
   $('feishu-secret').value = settings.feishu.secret || '';
   $('feishu-folder').value = settings.feishu.folder || '';
@@ -576,11 +605,12 @@ async function ask(question, references = state.references, { preserveDraft = fa
     return;
   }
   showPanel('chat');
-  if (!state.config.deepseek && !getConnections().deepseek) {
+  const teacher = teacherConnection();
+  if (!teacher.configured) {
     $('question').value = question;
     state.references = [...references];
     displayExcerpts();
-    status('chat-status', '请先在设置中配置 DeepSeek。');
+    status('chat-status', `请先在设置中配置 ${teacher.name}。`);
     openSettings();
     return;
   }
@@ -972,6 +1002,10 @@ $('pdf-cloud-setup').onclick = () => {
 $('teacher-style-mode').onchange = (event) => {
   $('teacher-style-field').hidden = event.target.value !== 'custom';
 };
+$('teaching-provider').onchange = () => {
+  syncTeacherSettings();
+  status('credential-status');
+};
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   const trim = (id) => $(id).value.trim();
@@ -982,25 +1016,45 @@ $('settings-form').onsubmit = async (event) => {
     return;
   }
   const deepseek = trim('deepseek-key');
-  if (deepseek !== savedKey) {
-    const submit = event.submitter;
-    if (submit) submit.disabled = true;
-    try {
-      await rememberDeepSeekKey(deepseek);
-      savedKey = deepseek;
-      credentialError = '';
-    } catch {
-      credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。';
-    } finally { if (submit) submit.disabled = false; }
+  const provider = $('teaching-provider').value;
+  const hermes = { baseUrl: trim('hermes-url'), key: trim('hermes-key') };
+  if (provider === 'hermes') {
+    if (state.config.canConfigureHermes && ((hermes.baseUrl && !hermesEndpoint(hermes.baseUrl)) || (hermes.key && !validHermesKey(hermes.key)))) {
+      status('credential-status', '请填写 Hermes 的 HTTPS 服务地址和有效的访问密钥。');
+      return;
+    }
+    if (!state.config.canConfigureHermes && !state.config.hermes) {
+      status('credential-status', '当前环境尚未配置 Hermes，请先连接讲课台服务器。');
+      return;
+    }
   }
-  saveConnections({ access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu });
-  teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
-    style: trim('teacher-style') };
-  const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
-  $('settings').close();
-  await refreshConfiguration();
-  feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
-    credentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
+  const submit = event.submitter;
+  if (submit) submit.disabled = true;
+  try {
+    if (deepseek !== savedKey) {
+      try {
+        await rememberDeepSeekKey(deepseek);
+        savedKey = deepseek;
+        credentialError = '';
+      } catch { credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。'; }
+    }
+    const connection = { provider, hermes };
+    if (provider !== savedHermes.provider || hermes.baseUrl !== savedHermes.hermes.baseUrl || hermes.key !== savedHermes.hermes.key) {
+      try {
+        await rememberHermesConnection(connection);
+        savedHermes = connection;
+        hermesCredentialError = '';
+      } catch { hermesCredentialError = 'Hermes 设置无法保存到本机，本次打开期间仍可使用。'; }
+    }
+    saveConnections({ access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu, ...connection });
+    teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
+      style: trim('teacher-style') };
+    const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
+    $('settings').close();
+    await refreshConfiguration();
+    feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
+      credentialError || hermesCredentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
+  } finally { if (submit) submit.disabled = false; }
 };
 $('records-open').onclick = openRecords;
 $('record-list').onchange = resetExportDisplay;
