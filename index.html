@@ -53,8 +53,12 @@
           <button type="button" id="ink-config" class="quiet" aria-controls="ink-panel" aria-expanded="false">笔刷设置</button>
         </div>
         <div class="history-tools">
-          <button type="button" id="undo" class="outline" title="撤销批注" aria-label="撤销批注" disabled>↶</button>
-          <button type="button" id="redo" class="outline" title="复原批注" aria-label="复原批注" disabled>↷</button>
+          <button type="button" id="undo" title="撤销批注" aria-label="撤销批注" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5-5 5 5 5M4 10h10a5 5 0 0 1 0 10h-3"/></svg>
+          </button>
+          <button type="button" id="redo" title="复原批注" aria-label="复原批注" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 5 5 5-5 5m5-5H10a5 5 0 0 0 0 10h3"/></svg>
+          </button>
         </div>
         <button type="button" id="book-fullscreen" aria-pressed="false" class="quiet" title="展开左侧课本">全屏</button>
         <template id="ink-panel-template">
@@ -192,8 +196,12 @@
           <button type="button" id="board-clear" class="quiet" disabled>清空</button>
         </div>
         <div class="history-tools">
-          <button type="button" id="board-undo" class="outline" title="撤销白板笔迹" aria-label="撤销白板笔迹" disabled>↶</button>
-          <button type="button" id="board-redo" class="outline" title="复原白板笔迹" aria-label="复原白板笔迹" disabled>↷</button>
+          <button type="button" id="board-undo" title="撤销白板笔迹" aria-label="撤销白板笔迹" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5-5 5 5 5M4 10h10a5 5 0 0 1 0 10h-3"/></svg>
+          </button>
+          <button type="button" id="board-redo" title="复原白板笔迹" aria-label="复原白板笔迹" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 5 5 5-5 5m5-5H10a5 5 0 0 0 0 10h3"/></svg>
+          </button>
         </div>
       </div>
       <div id="board-surface">
