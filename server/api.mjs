@@ -1,7 +1,7 @@
 import { recordSections, sourceLabel } from '../src/records.js';
 
 import { CHAT_BUDGET, MAX_REFERENCES, isExcerptImage } from '../src/excerpts.js';
-import { hermesEndpoint, validHermesKey } from '../src/hermes.js';
+import { hermesEndpoint, matchesHermesPin, validHermesKey } from '../src/hermes.js';
 
 const DEEPSEEK = 'https://api.deepseek.com/chat/completions';
 // NK-GeniOS (HiAgent v1.6) — campus-free alternative to DeepSeek. The Apikey
@@ -612,6 +612,8 @@ export async function handleApi(request, env = {}, { hosted = false, localApp = 
   };
   const requiresCode = Boolean(env.TEACH_PASS);
   const authorized = !requiresCode || equalSecret(request.headers.get('x-teach-code'), env.TEACH_PASS);
+  const webHermes = !localApp && requiresCode && authorized && canSupplyCredentials &&
+    /^[a-f0-9]{64}$/.test(env.HERMES_PIN_HASH || '') && hermesEndpoint(configured?.hermes?.baseUrl) && validHermesKey(configured?.hermes?.key);
   try {
     if (url.pathname === '/api/config' && request.method === 'GET') {
       return json({
@@ -619,7 +621,7 @@ export async function handleApi(request, env = {}, { hosted = false, localApp = 
         canConfigureHermes,
         deepseek: Boolean(authorized && configured?.deepseek),
         vision: Boolean(authorized && configured?.vision),
-        hermes: Boolean(authorized && hermesEndpoint(configured?.hermes?.baseUrl) && validHermesKey(configured?.hermes?.key)),
+        hermes: Boolean(webHermes),
         feishu: Boolean(authorized && configured?.appId && configured?.secret && configured?.folder),
       });
     }
@@ -639,9 +641,10 @@ export async function handleApi(request, env = {}, { hosted = false, localApp = 
       }
       const input = naming ? { references: body.references, history: [], question: '请根据这些课本页面总结名称。' } : body;
       if (body.provider === 'hermes') {
-        // Only the app can use an endpoint supplied by the caller. The web server uses its own endpoint.
-        return await askHermes(input, canConfigureHermes ? supplied?.hermes : configured?.hermes,
-          request, localApp ? hermesFetcher : fetcher, naming);
+        if (canConfigureHermes) return await askHermes(input, supplied?.hermes, request, hermesFetcher, naming);
+        if (!webHermes) throw new HttpError(422, '当前环境未启用白铃连接。');
+        if (!await matchesHermesPin(request.headers.get('x-hermes-pin'), env.HERMES_PIN_HASH)) throw new HttpError(403, '请先在设置中解锁白铃。');
+        return await askHermes(input, configured.hermes, request, fetcher, naming);
       }
       const key = supplied?.deepseek ? str(supplied.deepseek, 180, 'DeepSeek API Key') : configured?.deepseek;
       const visionKey = supplied?.vision ? str(supplied.vision, 200, '视觉模型 Key') : configured?.vision;

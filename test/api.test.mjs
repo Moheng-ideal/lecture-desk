@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { handleApi } from '../server/api.mjs';
 
@@ -69,12 +70,14 @@ test('adds optional learner context and style without truncating a long prior an
 
 test('Hermes receives screenshots and conversation history using the configured profile and model defaults', async () => {
   const baseUrl = 'https://hermes.example/p/teacher/v1/';
-  const env = { ...environment, HERMES_BASE_URL: baseUrl, HERMES_API_KEY: 'hermes-fixture' };
+  const pin = '962507';
+  const env = { ...environment, HERMES_BASE_URL: baseUrl, HERMES_API_KEY: 'hermes-fixture',
+    HERMES_PIN_HASH: createHash('sha256').update(pin).digest('hex') };
   const screenshot = { book: ref.book, page: 3, method: '选文截图', image: 'data:image/jpeg;base64,/9j/2Q==', width: 100, height: 80 };
   const response = await handleApi(post('/api/chat', { ...question, provider: 'hermes', references: [screenshot],
     history: [{ ...question, answer: '上次回答。' }],
     credentials: { hermes: { baseUrl: 'https://ignored.example/v1', key: 'ignored-key' } },
-  }), env, {
+  }, { 'X-Hermes-Pin': pin }), env, {
     fetcher: async (endpoint, options) => {
       assert.equal(endpoint, 'https://hermes.example/p/teacher/v1/chat/completions');
       assert.equal(options.headers.Authorization, 'Bearer hermes-fixture');
@@ -97,12 +100,16 @@ test('Hermes receives screenshots and conversation history using the configured 
   assert.doesNotMatch(JSON.stringify(publicConfig), /hermes-fixture|hermes\.example/);
 });
 
-test('Hermes never forwards caller-controlled server endpoints or plaintext connections', async () => {
+test('Hermes keeps browser requests locked and refuses plaintext connections', async () => {
   const body = { ...question, provider: 'hermes', credentials: { hermes: { baseUrl: 'https://unconfigured.example', key: 'fixture' } } };
   const fetcher = async () => assert.fail('Unexpected Hermes request');
   assert.equal((await handleApi(post('/api/chat', body), environment, { fetcher })).status, 422);
-  const hostedEnv = { ...environment, HERMES_BASE_URL: 'https://hermes.example/v1', HERMES_API_KEY: 'fixture' };
+  const hostedEnv = { ...environment, HERMES_BASE_URL: 'https://hermes.example/v1', HERMES_API_KEY: 'fixture',
+    HERMES_PIN_HASH: createHash('sha256').update('962507').digest('hex') };
   assert.equal((await handleApi(post('/api/chat', body), hostedEnv, { hosted: true, fetcher })).status, 422);
+  assert.equal((await handleApi(post('/api/chat', body), { ...hostedEnv, TEACH_PASS: '' }, { fetcher })).status, 422);
+  assert.equal((await handleApi(post('/api/chat', body), hostedEnv, { fetcher })).status, 403);
+  assert.equal((await handleApi(post('/api/chat', body, { 'X-Hermes-Pin': '123456' }), hostedEnv, { fetcher })).status, 403);
   for (const baseUrl of ['http://hermes.example/v1', 'https://user@hermes.example/v1', 'https://hermes.example/v1?key=fixture']) {
     body.credentials.hermes.baseUrl = baseUrl;
     const response = await handleApi(post('/api/chat', body), {}, { localApp: true, hermesFetcher: fetcher });

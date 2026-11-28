@@ -1,6 +1,6 @@
 import { nativeApp } from './platform.js';
 
-let settings = { access: '', provider: 'default', deepseek: '', vision: '', hermes: { baseUrl: '', key: '' }, feishu: {} };
+let settings = { access: '', provider: 'default', deepseek: '', vision: '', hermes: { baseUrl: '', key: '' }, hermesPin: '', feishu: {} };
 
 async function appRequest(path, options) {
   if (nativeApp) {
@@ -37,7 +37,11 @@ export class ApiError extends Error {
 async function post(path, data, credentials, signal) {
   const response = await appRequest(`/api/${path}`, {
     method: 'POST', signal,
-    headers: { 'Content-Type': 'application/json', ...(settings.access && { 'X-Teach-Code': settings.access }) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(settings.access && { 'X-Teach-Code': settings.access }),
+      ...(!nativeApp && data.provider === 'hermes' && { 'X-Hermes-Pin': settings.hermesPin }),
+    },
     body: JSON.stringify({ ...data, credentials }),
   });
   if (!response.ok) throw new ApiError(await response.json().catch(() => ({})));

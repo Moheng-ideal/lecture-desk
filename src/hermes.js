@@ -11,3 +11,10 @@ export function hermesEndpoint(address) {
 export function validHermesKey(key) {
   return typeof key === 'string' && key.length > 0 && key.length <= 1024 && !/[^\x21-\x7e]/.test(key);
 }
+
+export async function matchesHermesPin(pin, expectedHash) {
+  if (typeof pin !== 'string' || !/^\d{6}$/.test(pin) || !globalThis.crypto?.subtle) return false;
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+  const hex = Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return hex === expectedHash;
+}

@@ -37,7 +37,6 @@ Android 和卓易通版可在「设置 → 检查更新」选择「从服务器�
 ## 配置连接
 
 - **DeepSeek**。在应用、HTTPS 版或当前电脑的 `localhost` 打开「设置」，填入 DeepSeek API Key。密钥加密保存在本机，重新打开后自动读取。清空密钥并应用设置即可移除。 [DeepSeek 平台](https://platform.deepseek.com/)
-- **Hermes Agent**。在 Android／卓易通版的「设置 → 讲解师」选择 Hermes，填写 HTTPS API 地址和智能体的访问密钥。地址可以填到 `/v1`，多 Profile 网关可以填到 `/p/你的配置名/v1`。浏览器版由运行讲课台的服务器通过 `.env` 配置 `HERMES_BASE_URL` 和 `HERMES_API_KEY`，启用后可在设置中选择 Hermes。截图讲解使用 Hermes 配好的视觉能力。 [Hermes API 文档](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server)
 - **飞书**。在 [飞书开放平台](https://open.feishu.cn/app) 创建企业自建应用，开通「创建及编辑新版文档」权限 `docx:document` 并发布应用。含截图的问答录还需开通上传素材相关权限。让应用具备目标飞书云空间文件夹的可编辑权限，在「设置」中填入 App ID、App Secret 及 `/drive/folder/…` 文件夹链接。保存成功后，可以打开返回的云文档链接。若提示部分写入失败，保持原有标题和勾选项，再点「继续保存」。
 
 ## 本机或同一 Wi-Fi 运行

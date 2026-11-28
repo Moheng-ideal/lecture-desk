@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$AndroidJar,
     [Parameter(Mandatory)][string]$BuildTools,
-    [Parameter(Mandatory)][string]$JavaHome
+    [Parameter(Mandatory)][string]$JavaHome,
+    [string]$OutputApk
 )
 
 $ErrorActionPreference = 'Continue'
@@ -41,7 +42,7 @@ try {
     $unsigned = Join-Path $stage 'unsigned.apk'
     $aligned = Join-Path $stage 'aligned.apk'
     $signed = Join-Path $stage 'signed.apk'
-    $output = "release/lecture-desk-android-$version.apk"
+    $output = if ($OutputApk) { $OutputApk } else { "release/lecture-desk-android-$version.apk" }
     $store = Join-Path $signingDirectory 'lecture-desk.p12'
     $passwordFile = Join-Path $signingDirectory 'store.secret'
 

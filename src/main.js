@@ -6,7 +6,7 @@ import { listBooks, listRecords, newId, readState, removeBook, saveBook, saveRec
 import { getConfiguration, getConnections, saveConnections, sendPdfToFeishu, sendToFeishu, streamAnswer, suggestBookTitle } from './api.js';
 import { formatDate, groupRecords, sourceLabel } from './records.js';
 import { loadDeepSeekKey, loadHermesConnection, rememberDeepSeekKey, rememberHermesConnection } from './credential-store.js';
-import { hermesEndpoint, validHermesKey } from './hermes.js';
+import { hermesEndpoint, matchesHermesPin, validHermesKey } from './hermes.js';
 import { installScrollThumb } from './scroll-thumb.js';
 import { installDividers, installToolPressFeedback } from './layout.js';
 import { installPenShortcuts } from './pen-shortcuts.js';
@@ -20,6 +20,7 @@ import { CHAT_BUDGET, MAX_REFERENCES, currentReferences } from './excerpts.js';
 import { bookFormat, formats } from './book-format.js';
 
 const $ = (id) => document.getElementById(id);
+const bailingPinHash = import.meta.env.VITE_HERMES_PIN_HASH;
 const sample = { id: 'sample', title: '函数与图像', sample: true };
 const state = { book: sample, records: [], references: [], exports: [], config: {}, failed: null };
 const drafts = new Map();
@@ -49,11 +50,11 @@ const credentialsReady = Promise.all([
     savedKey = key;
     saveConnections({ ...getConnections(), deepseek: key });
   }).catch((error) => { credentialError = error.message; }),
-  loadHermesConnection().then((connection) => {
+  nativeApp && bailingPinHash && loadHermesConnection().then((connection) => {
     if (!connection) return;
     savedHermes = connection;
     saveConnections({ ...getConnections(), ...connection });
-  }).catch(() => { hermesCredentialError = '本机已保存的 Hermes 设置无法读取，请重新填写。'; }),
+  }).catch(() => { hermesCredentialError = '本机已保存的白铃连接无法读取，请重新填写。'; }),
 ]);
 
 function element(tag, text, className) {
@@ -223,7 +224,7 @@ function displayThread() {
 function teacherConnection() {
   const { provider, deepseek, hermes } = getConnections();
   if (provider === 'hermes') {
-    return { name: 'Hermes', configured: state.config.hermes ||
+    return { name: '白铃', usingHermes: true, configured: state.config.hermes ||
       (state.config.canConfigureHermes && Boolean(hermes.baseUrl && hermes.key)) };
   }
   return { name: deepseek && !deepseek.startsWith('sk-') ? 'NK-GeniOS' : 'DeepSeek',
@@ -236,12 +237,12 @@ function syncChat() {
   $('stop').hidden = !busy;
   $('teach-page').disabled = busy || !reader?.rendered || Boolean(changingBook);
   $('teach-next').disabled = $('teach-page').disabled || reader.page >= reader.documentSource.numPages;
-  const { name, configured } = teacherConnection();
+  const { name, configured, usingHermes } = teacherConnection();
   const hasVision = state.config.vision || getConnections().vision;
   const info = state.config.unavailable ? '服务不可用' :
     state.config.requiresCode && !state.config.authorized ? '请输入访问口令' :
-      !configured ? '待配置' : name === 'Hermes' || hasVision ? '已配置' : '已配置（未配视觉模型）';
-  const label = name !== 'Hermes' && configured && hasVision ? `${name} + 视觉模型` : name;
+      !configured ? '待配置' : usingHermes || hasVision ? '已配置' : '已配置（未配视觉模型）';
+  const label = !usingHermes && configured && hasVision ? `${name} + 视觉模型` : name;
   $('connection-state').textContent = `${label} · ${info}`;
 }
 
@@ -535,23 +536,11 @@ async function openLibrary() {
   if (!$('library').open) $('library').showModal();
 }
 
-function syncTeacherSettings() {
-  const useHermes = $('teaching-provider').value === 'hermes';
-  const localHermes = useHermes && state.config.canConfigureHermes;
-  $('hermes-fields').hidden = !localHermes;
-  $('hermes-url').disabled = $('hermes-key').disabled = !localHermes;
-  $('credential-fields').hidden = $('vision-field').hidden = useHermes || !state.config.canSupplyCredentials;
-}
-
 async function openSettings(section) {
   await Promise.all([credentialsReady, preferencesReady, fingerInkReady]);
   const settings = getConnections();
   $('pass-label').hidden = !state.config.requiresCode;
-  $('teaching-provider-field').hidden = !(state.config.canConfigureHermes || state.config.hermes || settings.provider === 'hermes');
-  $('teaching-provider').value = settings.provider;
-  $('hermes-url').value = settings.hermes.baseUrl;
-  $('hermes-key').value = settings.hermes.key;
-  syncTeacherSettings();
+  $('credential-fields').hidden = $('vision-field').hidden = !state.config.canSupplyCredentials;
   $('feishu-fields').hidden = !state.config.canSupplyCredentials;
   $('feishu-browser-help').hidden = !state.config.canSupplyCredentials;
   $('feishu-local-help').hidden = Boolean(state.config.canSupplyCredentials);
@@ -563,7 +552,7 @@ async function openSettings(section) {
   $('access-code').value = settings.access;
   $('deepseek-key').value = settings.deepseek;
   $('vision-key').value = settings.vision || '';
-  status('credential-status', credentialError || hermesCredentialError);
+  status('credential-status', credentialError);
   $('feishu-id').value = settings.feishu.appId || '';
   $('feishu-secret').value = settings.feishu.secret || '';
   $('feishu-folder').value = settings.feishu.folder || '';
@@ -577,6 +566,100 @@ async function openSettings(section) {
     $('feishu-guide').open = true;
   }
   if (!$('settings').open) $('settings').showModal();
+}
+
+let versionClicks = 0;
+let versionClickTimeout;
+let bailingAttempt = 0;
+let bailingPin = '';
+
+function resetVersionClicks() {
+  clearTimeout(versionClickTimeout);
+  versionClicks = 0;
+}
+
+function showSettingsView(view) {
+  for (const id of ['settings-form', 'bailing-unlock', 'bailing-connection']) $(id).hidden = id !== view;
+  $('settings').setAttribute('aria-labelledby', `${view}-title`);
+  $('settings').scrollTop = 0;
+}
+
+function returnToSettings() {
+  resetVersionClicks();
+  bailingAttempt++;
+  bailingPin = '';
+  $('bailing-unlock').reset();
+  $('bailing-connection').reset();
+  showSettingsView('settings-form');
+  if ($('settings').open) $('app-version').focus();
+}
+
+function clickVersion() {
+  if (!bailingPinHash || !(state.config.canConfigureHermes || state.config.hermes)) return;
+  clearTimeout(versionClickTimeout);
+  if (++versionClicks < 5) {
+    versionClickTimeout = setTimeout(resetVersionClicks, 1200);
+    return;
+  }
+  resetVersionClicks();
+  status('bailing-unlock-status');
+  showSettingsView('bailing-unlock');
+  $('bailing-pin').focus();
+}
+
+async function unlockBailing(event) {
+  event.preventDefault();
+  const attempt = ++bailingAttempt;
+  const pin = $('bailing-pin').value;
+  const valid = await matchesHermesPin(pin, bailingPinHash).catch(() => false);
+  if (attempt !== bailingAttempt || !$('settings').open || $('bailing-unlock').hidden) return;
+  $('bailing-pin').value = '';
+  if (!valid) {
+    status('bailing-unlock-status', '密码不正确，请重试。');
+    $('bailing-pin').focus();
+    return;
+  }
+  const { provider, hermes } = getConnections();
+  if (!nativeApp) bailingPin = pin;
+  $('bailing-enabled').checked = provider === 'hermes';
+  $('hermes-fields').hidden = !state.config.canConfigureHermes;
+  $('hermes-url').value = hermes.baseUrl;
+  $('hermes-key').value = hermes.key;
+  status('bailing-connection-status', hermesCredentialError);
+  showSettingsView('bailing-connection');
+  $('bailing-enabled').focus();
+}
+
+async function saveBailing(event) {
+  event.preventDefault();
+  if ($('bailing-connection').hidden) return;
+  const useHermes = $('bailing-enabled').checked;
+  const provider = useHermes ? 'hermes' : 'default';
+  const hermes = { baseUrl: $('hermes-url').value.trim(), key: $('hermes-key').value.trim() };
+  if (state.config.canConfigureHermes && (
+    ((useHermes || hermes.baseUrl) && !hermesEndpoint(hermes.baseUrl)) ||
+    ((useHermes || hermes.key) && !validHermesKey(hermes.key))
+  )) {
+    status('bailing-connection-status', '请填写白铃的 HTTPS 服务地址和有效的 API 密钥。');
+    return;
+  }
+  const hermesPin = useHermes && !nativeApp ? bailingPin : '';
+  const submit = $('bailing-connection').querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    if (state.config.canConfigureHermes && (provider !== savedHermes.provider ||
+      hermes.baseUrl !== savedHermes.hermes.baseUrl || hermes.key !== savedHermes.hermes.key)) {
+      try {
+        await rememberHermesConnection({ provider, hermes });
+        savedHermes = { provider, hermes };
+        hermesCredentialError = '';
+      } catch { hermesCredentialError = '白铃连接无法保存到本机，本次打开期间仍可使用。'; }
+    }
+    saveConnections({ ...getConnections(), provider, hermes, hermesPin });
+    if ($('settings').open && !$('bailing-connection').hidden) $('settings').close();
+    syncChat();
+    feedback(hermesCredentialError || '白铃连接设置已保存。');
+  } finally { submit.disabled = false; }
 }
 
 function precedingTurns(question, references, preferences) {
@@ -888,6 +971,12 @@ $('finger-ink').onchange = (event) => {
   saveState('fingerInk', reader.fingerInk).catch(() => feedback('手指书写设置仅在本次打开期间生效。'));
 };
 $('app-version').textContent = '当前版本 v' + version;
+$('app-version').onclick = clickVersion;
+$('settings').addEventListener('click', (event) => { if (event.target !== $('app-version')) resetVersionClicks(); });
+$('settings').addEventListener('close', returnToSettings);
+$('bailing-unlock-back').onclick = $('bailing-connection-back').onclick = returnToSettings;
+$('bailing-unlock').onsubmit = unlockBailing;
+$('bailing-connection').onsubmit = saveBailing;
 $('settings-changelog').addEventListener('toggle', () => {
   const section = $('settings-changelog-content');
   if ($('settings-changelog').open && !section.hasChildNodes()) {
@@ -1002,10 +1091,6 @@ $('pdf-cloud-setup').onclick = () => {
 $('teacher-style-mode').onchange = (event) => {
   $('teacher-style-field').hidden = event.target.value !== 'custom';
 };
-$('teaching-provider').onchange = () => {
-  syncTeacherSettings();
-  status('credential-status');
-};
 $('settings-form').onsubmit = async (event) => {
   event.preventDefault();
   const trim = (id) => $(id).value.trim();
@@ -1016,18 +1101,6 @@ $('settings-form').onsubmit = async (event) => {
     return;
   }
   const deepseek = trim('deepseek-key');
-  const provider = $('teaching-provider').value;
-  const hermes = { baseUrl: trim('hermes-url'), key: trim('hermes-key') };
-  if (provider === 'hermes') {
-    if (state.config.canConfigureHermes && ((hermes.baseUrl && !hermesEndpoint(hermes.baseUrl)) || (hermes.key && !validHermesKey(hermes.key)))) {
-      status('credential-status', '请填写 Hermes 的 HTTPS 服务地址和有效的访问密钥。');
-      return;
-    }
-    if (!state.config.canConfigureHermes && !state.config.hermes) {
-      status('credential-status', '当前环境尚未配置 Hermes，请先连接讲课台服务器。');
-      return;
-    }
-  }
   const submit = event.submitter;
   if (submit) submit.disabled = true;
   try {
@@ -1038,22 +1111,14 @@ $('settings-form').onsubmit = async (event) => {
         credentialError = '';
       } catch { credentialError = 'DeepSeek API Key 无法保存到本机，本次打开期间仍可使用。'; }
     }
-    const connection = { provider, hermes };
-    if (provider !== savedHermes.provider || hermes.baseUrl !== savedHermes.hermes.baseUrl || hermes.key !== savedHermes.hermes.key) {
-      try {
-        await rememberHermesConnection(connection);
-        savedHermes = connection;
-        hermesCredentialError = '';
-      } catch { hermesCredentialError = 'Hermes 设置无法保存到本机，本次打开期间仍可使用。'; }
-    }
-    saveConnections({ access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu, ...connection });
+    saveConnections({ ...getConnections(), access: trim('access-code'), deepseek, vision: trim('vision-key'), feishu });
     teachingPreferences = { profile: trim('learner-profile'), mode: $('teacher-style-mode').value,
       style: trim('teacher-style') };
     const preferencesSaved = await saveState('teachingPreferences', teachingPreferences).then(() => true).catch(() => false);
     $('settings').close();
     await refreshConfiguration();
     feedback(state.config.requiresCode && !state.config.authorized ? '局域网口令不正确。' :
-      credentialError || hermesCredentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
+      credentialError || (preferencesSaved ? '设置已应用。' : '本机未能保存用户画像与回复风格，本次打开期间仍可使用。'));
   } finally { if (submit) submit.disabled = false; }
 };
 $('records-open').onclick = openRecords;
