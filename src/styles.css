@@ -163,9 +163,8 @@ button[aria-pressed="true"] { background: var(--accent-soft); color: var(--green
 #pdf-save-status:empty { display: none; }
 .pdf-save-body #pdf-cloud-setup { justify-self: start; }
 .history-tools { display: flex; flex: none; align-items: center; gap: 2px; padding: 2px 4px; }
-.history-tools button { min-height: var(--tool-button-height); padding-inline: 8px; }
+.history-tools button { display: grid; place-items: center; inline-size: var(--tool-button-height); min-height: var(--tool-button-height); padding: 0; font-size: 1.25rem; line-height: 1; }
 .history-tools button:disabled { color: var(--muted); opacity: .72; }
-.history-tools button span, #redo { font-size: 1rem; }
 .selection-bar { min-height: 48px; }
 .selection-bar span { font-size: .8rem; color: var(--muted); flex: 1; min-width: 100px; }
 .selection-bar button { min-height: var(--tool-button-height); }
